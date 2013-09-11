@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Class-Path: scala-library.jar json4s-core_2.10-3.2.5.jar json4s-native
+ _2.10-3.2.5.jar json4s-ast_2.10-3.2.5.jar scalaj-http_2.10-0.3.10.jar
+Main-Class: Main
+
