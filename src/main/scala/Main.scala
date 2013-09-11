@@ -17,7 +17,7 @@ object Main extends App {
 
   def syncTraktToHummingbird(traktShow:(String, BigInt, BigInt),
                              hummingbirdLibrary:List[(String, BigInt, String)]) {
-    val hummingbirdShow = library.filter(x => x._1 == traktShow._1).head
+    val hummingbirdShow = hummingbirdLibrary.filter(x => x._1 == traktShow._1).head
     val slug = hummingbirdShow._3
     val updateParams = if(traktShow._2 - hummingbirdShow._2 > 1) "episodes_watched" -> traktShow._2.toString() else "increment_episodes" -> "true"
     val con = Http.post(s"$HUMMINGBIRD_API/libraries/$slug").params(updateParams,
