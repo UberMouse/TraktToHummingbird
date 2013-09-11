@@ -1,80 +1,89 @@
 import org.json4s.JsonAST._
 import scalaj.http._
 import org.json4s.native.JsonMethods
+import org.json4s.DefaultFormats
 
 object Main extends App {
   val HUMMINGBIRD_API = "https://hummingbirdv1.p.mashape.com"
   val TRAKT_API = "http://api.trakt.tv"
-  val authToken = getHummingbirdAuthToken("", email = "")
 
-  val library = retrieveHummingBirdLibrary("UberMouse", authToken)
+  case class HummingbirdConfig(authToken:String, mashapeAuth:String)
 
-  val shows = retrieveTraktShowData.groupBy(_._1)
-                                   .map(x => x._2.sortWith((x, y) => x._2 > y._2).head)
-                                   .filter(show => library.exists(x => x._1 == show._1 && x._2 < show._2))
+  case class TraktEpisode(episode:BigInt, season:BigInt)
+  case class TraktShow(title:String)
+  case class TraktActivity(show:TraktShow, episode:TraktEpisode)
+
+  case class HummingbirdAnime(title:String, slug:String)
+  case class HummingbirdShow(episodes_watched:BigInt, anime:HummingbirdAnime)
+
+  val traktUsername = ""
+  val hummingbirdUsername = ""
+  val hummingbirdEmail = ""
+  val hummingbirdPassword = ""
+  val traktApiKey = ""
+  val mashapeAuth =  ""
+
+  implicit val formats = DefaultFormats
+  implicit val hummingbirdConfig = HummingbirdConfig(getHummingbirdAuthToken(hummingbirdPassword,
+                                                                             mashapeAuth,
+                                                                             email = hummingbirdEmail),
+                                                     mashapeAuth)
+  val library = retrieveHummingBirdLibrary(hummingbirdUsername)
+
+  val shows = getRecentTraktActivity(traktUsername,
+                                     traktApiKey)
+                                   .groupBy(_.show.title)
+                                   .map(x => x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head)
+                                   .filter(activity => {
+    library.exists(x => x.anime.title == activity.show.title && x.episodes_watched < activity.episode.episode)
+  })
 
   shows.foreach(show => syncTraktToHummingbird(show, library))
 
-  def syncTraktToHummingbird(traktShow:(String, BigInt, BigInt),
-                             hummingbirdLibrary:List[(String, BigInt, String)]) {
-    val hummingbirdShow = hummingbirdLibrary.filter(x => x._1 == traktShow._1).head
-    val slug = hummingbirdShow._3
-    val updateParams = if(traktShow._2 - hummingbirdShow._2 > 1) "episodes_watched" -> traktShow._2.toString() else "increment_episodes" -> "true"
-    val con = Http.post(s"$HUMMINGBIRD_API/libraries/$slug").params(updateParams,
-                                                                    "auth_token" -> authToken)
-                                                            .option(HttpOptions.connTimeout(10000))
-                                                            .option(HttpOptions.readTimeout(10000))
-                                                            .header("X-Mashape-Authorization", "")
+  def mkConnection(url:String, post:Boolean = false, mashapeAuth:String = "") = {
+    val con = (if(post) Http.post(url) else Http(url)).option(HttpOptions.connTimeout(10000))
+                                                      .option(HttpOptions.readTimeout(10000))
+    if(mashapeAuth != "") con.header("X-Mashape-Authorization", mashapeAuth)
+    else con
+  }
+
+  def syncTraktToHummingbird(traktActivity:TraktActivity,
+                             hummingbirdLibrary:List[HummingbirdShow])(implicit config:HummingbirdConfig) {
+    val hummingbirdShow = hummingbirdLibrary.filter(x => x.anime.title == traktActivity.show.title).head
+    val slug = hummingbirdShow.anime.slug
+    val updateParams = {
+      if(traktActivity.episode.episode - hummingbirdShow.episodes_watched > 1)
+        "episodes_watched" -> traktActivity.episode.episode.toString()
+      else
+        "increment_episodes" -> "true"
+    }
+    val con = mkConnection(s"$HUMMINGBIRD_API/libraries/$slug",
+                           post = true,
+                           config.mashapeAuth).params(updateParams, "auth_token" -> config.authToken)
     if(con.asString.contains(slug))
       println(s"Synced $slug to Hummingbird")
     else
       println(s"Failed to sync $slug to Hummingbird")
   }
 
-  def retrieveHummingBirdLibrary(username:String, authToken:String):List[(String, BigInt, String)] = {
-    val con = Http(s"$HUMMINGBIRD_API/users/$username/library").params("status" -> "currently-watching",
-                                                                       "auth_token" -> authToken)
-                                                               .option(HttpOptions.connTimeout(10000))
-                                                               .option(HttpOptions.readTimeout(10000))
-                                                               .header("X-Mashape-Authorization", "")
-
-    for {
-      JArray(shows) <- JsonMethods.parse(con.asString)
-      JObject(showData) <- shows
-      JField("episodes_watched", JInt(watched)) <- showData
-      JField("anime", JObject(anime)) <- showData
-      JField("title", JString(title)) <- anime
-      JField("slug", JString(slug)) <- anime
-    } yield (title, watched, slug)
+  def retrieveHummingBirdLibrary(username:String)(implicit config:HummingbirdConfig) = {
+    val con = mkConnection(s"$HUMMINGBIRD_API/users/$username/library",
+                           mashapeAuth = config.mashapeAuth).params("status" -> "currently-watching",
+                                                                    "auth_token" -> config.authToken)
+    JsonMethods.parse(con.asString).children.map(x => x.extract[HummingbirdShow])
   }
 
 
-  def getHummingbirdAuthToken(password:String, email:String = "", username:String = "") = {
-    Http.post(s"$HUMMINGBIRD_API/users/authenticate")
-        .params("email" -> (if(email == "") username else email),
-                "password" -> password)
-        .option(HttpOptions.connTimeout(10000))
-        .option(HttpOptions.readTimeout(10000))
-        .header("X-Mashape-Authorization", "")
-        .asString
-        .replaceAll("\"", "")
+  def getHummingbirdAuthToken(password:String, mashapeAuth:String, email:String = "", username:String = ""):String = {
+    mkConnection(s"$HUMMINGBIRD_API/users/authenticate",
+                 post = true,
+                 mashapeAuth).params("password" -> password,
+                                                            if(email == "") "username" -> username else "email" -> email)
+                                                    .asString.replaceAll("\"", "")
   }
 
-  def retrieveTraktShowData: List[(String, BigInt, BigInt)] = {
-    for {
-      JObject(showData) <- getRecentTraktShows("UberMouse", "")
-      JField("show", JObject(show)) <- showData
-      JField("episode", JObject(episode)) <- showData
-      JField("title", JString(title)) <- show
-      JField("season", JInt(season)) <- episode
-      JField("episode", JInt(episode)) <- episode
-    } yield (title, episode, season)
-  }
-
-  def getRecentTraktShows(username:String, apiKey: String) = {
-    val con = Http(s"$TRAKT_API/activity/user.json/$apiKey/$username/episode/scrobble")
-              .option(HttpOptions.connTimeout(10000))
-              .option(HttpOptions.readTimeout(10000))
-    JsonMethods.parse(con.asString)
+  def getRecentTraktActivity(username:String, apiKey: String) = {
+    val con = mkConnection(s"$TRAKT_API/activity/user.json/$apiKey/$username/episode/scrobble")
+    (JsonMethods.parse(con.asString) \ "activity").children.map(x => x.extract[TraktActivity])
   }
 }
