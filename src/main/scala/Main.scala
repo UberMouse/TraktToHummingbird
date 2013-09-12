@@ -48,17 +48,25 @@ object Main extends App {
                                                                              hummingbirdEmail,
                                                                              hummingbirdUsername),
                                                      mashapeAuth)
-  val library = retrieveHummingBirdLibrary(hummingbirdUsername)
+  while (true) {
+    try {
+      val library = retrieveHummingBirdLibrary(hummingbirdUsername)
 
-  val shows = getRecentTraktActivity(traktUsername,
-                                     traktApiKey)
-                                   .groupBy(_.show.title)
-                                   .map(x => x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head)
-                                   .filter(activity => {
-    library.exists(x => x.anime.title == activity.show.title && x.episodes_watched < activity.episode.episode)
-  })
+      val shows = getRecentTraktActivity(traktUsername,
+                                         traktApiKey)
+                                       .groupBy(_.show.title)
+                                       .map(x => x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head)
+                                       .filter(activity => {
+        library.exists(x => x.anime.title.toLowerCase == activity.show.title.toLowerCase && x.episodes_watched < activity.episode.episode)
+      })
 
-  shows.foreach(show => syncTraktToHummingbird(show, library))
+      shows.foreach(show => syncTraktToHummingbird(show, library))
+      Thread.sleep(300000)
+    }
+    catch {
+      case e: Exception => Thread.sleep(10000)
+    }
+  }
 
   def mkConnection(url:String, post:Boolean = false, mashapeAuth:String = "") = {
     val con = (if(post) Http.post(url) else Http(url)).option(HttpOptions.connTimeout(10000))
@@ -69,7 +77,7 @@ object Main extends App {
 
   def syncTraktToHummingbird(traktActivity:TraktActivity,
                              hummingbirdLibrary:List[HummingbirdShow])(implicit config:HummingbirdConfig) {
-    val hummingbirdShow = hummingbirdLibrary.find(x => x.anime.title == traktActivity.show.title).get
+    val hummingbirdShow = hummingbirdLibrary.find(x => x.anime.title.toLowerCase == traktActivity.show.title.toLowerCase).get
     val slug = hummingbirdShow.anime.slug
     val updateParams = {
       if(traktActivity.episode.episode - hummingbirdShow.episodes_watched > 1)
