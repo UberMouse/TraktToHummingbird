@@ -1,7 +1,7 @@
-import org.json4s.JsonAST._
 import scalaj.http._
 import org.json4s.native.JsonMethods
 import org.json4s.DefaultFormats
+import org.streum.configrity._
 
 object Main extends App {
   val HUMMINGBIRD_API = "https://hummingbirdv1.p.mashape.com"
@@ -16,17 +16,37 @@ object Main extends App {
   case class HummingbirdAnime(title:String, slug:String)
   case class HummingbirdShow(episodes_watched:BigInt, anime:HummingbirdAnime)
 
-  val traktUsername = ""
-  val hummingbirdUsername = ""
-  val hummingbirdEmail = ""
-  val hummingbirdPassword = ""
-  val traktApiKey = ""
-  val mashapeAuth =  ""
+  val defaults = Configuration("mashape-auth" -> "nZMJT9teIblQikXff081wAMuIDuFmkas",
+                               "trakt-api-key" -> "fillmeout",
+                               "trakt-username" -> "fillmeout",
+                               "hummingbird-username" -> "fillmeout",
+                               "hummingbird-email" -> "fillmeout",
+                               "hummingbird-password" -> "fillmeout")
+  val config = {
+    try {
+      Configuration.load("config.conf") include defaults
+    } catch {
+      case e:Exception => {
+        defaults.save("config.conf")
+        println("No config was found, created one with defaults. Please fill out config.conf")
+        System.exit(-1)
+        defaults
+      }
+    }
+  }
+
+  val traktUsername = config[String]("trakt-username")
+  val hummingbirdUsername = config[String]("hummingbird-username")
+  val hummingbirdEmail = config[String]("hummingbird-email")
+  val hummingbirdPassword = config[String]("hummingbird-password")
+  val traktApiKey = config[String]("trakt-api-key")
+  val mashapeAuth = config[String]("mashape-auth")
 
   implicit val formats = DefaultFormats
   implicit val hummingbirdConfig = HummingbirdConfig(getHummingbirdAuthToken(hummingbirdPassword,
                                                                              mashapeAuth,
-                                                                             email = hummingbirdEmail),
+                                                                             hummingbirdEmail,
+                                                                             hummingbirdUsername),
                                                      mashapeAuth)
   val library = retrieveHummingBirdLibrary(hummingbirdUsername)
 
@@ -49,7 +69,7 @@ object Main extends App {
 
   def syncTraktToHummingbird(traktActivity:TraktActivity,
                              hummingbirdLibrary:List[HummingbirdShow])(implicit config:HummingbirdConfig) {
-    val hummingbirdShow = hummingbirdLibrary.filter(x => x.anime.title == traktActivity.show.title).head
+    val hummingbirdShow = hummingbirdLibrary.find(x => x.anime.title == traktActivity.show.title).get
     val slug = hummingbirdShow.anime.slug
     val updateParams = {
       if(traktActivity.episode.episode - hummingbirdShow.episodes_watched > 1)
@@ -78,8 +98,8 @@ object Main extends App {
     mkConnection(s"$HUMMINGBIRD_API/users/authenticate",
                  post = true,
                  mashapeAuth).params("password" -> password,
-                                                            if(email == "") "username" -> username else "email" -> email)
-                                                    .asString.replaceAll("\"", "")
+                                     if(email == "") "username" -> username else "email" -> email)
+                              .asString.replaceAll("\"", "")
   }
 
   def getRecentTraktActivity(username:String, apiKey: String) = {
