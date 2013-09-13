@@ -79,6 +79,9 @@ object Main extends App {
                              hummingbirdLibrary:List[HummingbirdShow])(implicit config:HummingbirdConfig) {
     val hummingbirdShow = hummingbirdLibrary.find(x => x.anime.title.toLowerCase == traktActivity.show.title.toLowerCase).get
     val slug = hummingbirdShow.anime.slug
+
+    if(traktActivity.episode.episode - hummingbirdShow.episodes_watched < 0) return
+
     val updateParams = {
       if(traktActivity.episode.episode - hummingbirdShow.episodes_watched > 1)
         "episodes_watched" -> traktActivity.episode.episode.toString()
