@@ -52,13 +52,18 @@ object Main extends App {
     try {
       val library = retrieveHummingBirdLibrary(hummingbirdUsername)
 
+      val highestEpisode = (x:(String, List[TraktActivity])) => {
+        x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head
+      }
+      val showRequiresSync = (activity:TraktActivity) => {
+        library.exists(x => x.anime.title.toLowerCase == activity.show.title.toLowerCase
+                            && x.episodes_watched < activity.episode.episode)
+      }
       val shows = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
                                        .groupBy(_.show.title)
-                                       .map(x => x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head)
-                                       .filter(activity => {
-        library.exists(x => x.anime.title.toLowerCase == activity.show.title.toLowerCase && x.episodes_watched < activity.episode.episode)
-      })
+                                       .map(highestEpisode)
+                                       .filter(showRequiresSync)
 
       shows.foreach(show => syncTraktToHummingbird(show, library))
       Thread.sleep(300000)
