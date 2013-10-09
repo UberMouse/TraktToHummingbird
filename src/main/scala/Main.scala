@@ -56,14 +56,14 @@ object Main extends App {
         x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head
       }
       val showRequiresSync = (activity:TraktActivity) => {
-        library.exists(x => x.anime.title.toLowerCase == activity.show.title.toLowerCase
+        library.exists(x => x.anime.slug.toLowerCase == activity.show.title.toLowerCase
                             && x.episodes_watched < activity.episode.episode)
       }
       val shows = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
-                                       .groupBy(_.show.title)
-                                       .map(highestEpisode)
-                                       .filter(showRequiresSync)
+                                        .groupBy(_.show.title)
+                                        .map(highestEpisode)
+                                        .filter(showRequiresSync)
 
       shows.foreach(show => syncTraktToHummingbird(show, library))
       Thread.sleep(300000)
@@ -82,7 +82,7 @@ object Main extends App {
 
   def syncTraktToHummingbird(traktActivity:TraktActivity,
                              hummingbirdLibrary:List[HummingbirdShow])(implicit config:HummingbirdConfig) {
-    val hummingbirdShow = hummingbirdLibrary.find(x => x.anime.title.toLowerCase == traktActivity.show.title.toLowerCase).get
+    val hummingbirdShow = hummingbirdLibrary.find(x => x.anime.slug.toLowerCase == traktActivity.show.title.toLowerCase).get
     val slug = hummingbirdShow.anime.slug
 
     if(traktActivity.episode.episode - hummingbirdShow.episodes_watched < 0) return
