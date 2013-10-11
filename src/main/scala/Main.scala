@@ -1,16 +1,18 @@
+import org.streum.configrity.converter.{ValueConverter, ListConverter}
 import scalaj.http._
 import org.json4s.native.JsonMethods
 import org.json4s.DefaultFormats
 import org.streum.configrity._
 
 object Main extends App {
+  implicit val TUPLE_CONVERTER = TupleConverter
   val HUMMINGBIRD_API = "https://hummingbirdv1.p.mashape.com"
   val TRAKT_API = "http://api.trakt.tv"
 
   case class HummingbirdConfig(authToken:String, mashapeAuth:String)
 
   case class TraktEpisode(episode:BigInt, season:BigInt)
-  case class TraktShow(title:String)
+  case class TraktShow(title:String, tvdb_id:Int)
   case class TraktActivity(show:TraktShow, episode:TraktEpisode)
 
   case class HummingbirdAnime(title:String, slug:String)
@@ -35,6 +37,19 @@ object Main extends App {
     }
   }
 
+  val defaultOverrides = Configuration("shows" -> List("261862" -> "chuunibyou-demo-koi-ga-shitai"))
+  val overrideConfig = {
+    try {
+      Configuration.load("overrides.conf") include defaultOverrides
+    } catch {
+      case e:Exception => {
+        defaultOverrides.save("overrides.conf")
+        defaultOverrides
+      }
+    }
+  }
+
+
   val traktUsername = config[String]("trakt-username")
   val hummingbirdUsername = config[String]("hummingbird-username")
   val hummingbirdEmail = config[String]("hummingbird-email")
@@ -51,6 +66,7 @@ object Main extends App {
   while (true) {
     try {
       val library = retrieveHummingBirdLibrary(hummingbirdUsername)
+      val overrideShows = overrideConfig[List[(Int, String)]]("shows")
 
       val highestEpisode = (x:(String, List[TraktActivity])) => {
         x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head
@@ -59,10 +75,14 @@ object Main extends App {
         library.exists(x => x.anime.slug.toLowerCase == activity.show.title.toLowerCase
                             && x.episodes_watched < activity.episode.episode)
       }
+      val overrideShowNames = (x:TraktActivity) => {
+        x.copy(x.show.copy(overrideShows.find(y => y._1 == x.show.tvdb_id).map(x => x._2).getOrElse(x.show.title)))
+      }
       val shows = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
                                         .groupBy(_.show.title)
                                         .map(highestEpisode)
+                                        .map(overrideShowNames)
                                         .filter(showRequiresSync)
 
       shows.foreach(show => syncTraktToHummingbird(show, library))
@@ -120,6 +140,13 @@ object Main extends App {
 
   def getRecentTraktActivity(username:String, apiKey: String) = {
     val con = mkConnection(s"$TRAKT_API/activity/user.json/$apiKey/$username/episode/scrobble")
-    (JsonMethods.parse(con.asString) \ "activity").children.map(x => x.extract[TraktActivity])
+    (JsonMethods.parse(con.asString) \ "activity").children.map(x => x.extract[TraktActivity]).reverse
+  }
+
+  object TupleConverter extends ValueConverter[(Int, String)] {
+    def parse( s: String ) = {
+      val split = s.split(",").map(x => x.replaceAll("[\\(\\)]", ""))
+      (Integer.parseInt(split(0)),split(1))
+    }
   }
 }
