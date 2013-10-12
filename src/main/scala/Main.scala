@@ -1,3 +1,5 @@
+import java.util.Date
+import org.json4s.JsonAST.{JField, JString}
 import org.streum.configrity.converter.{ValueConverter, ListConverter}
 import scalaj.http._
 import org.json4s.native.JsonMethods
@@ -12,7 +14,7 @@ object Main extends App {
   case class HummingbirdConfig(authToken:String, mashapeAuth:String)
 
   case class TraktEpisode(episode:BigInt, season:BigInt)
-  case class TraktShow(title:String, tvdb_id:Int)
+  case class TraktShow(title:String, tvdb_id:Int, slug:String)
   case class TraktActivity(show:TraktShow, episode:TraktEpisode)
 
   case class HummingbirdAnime(title:String, slug:String)
@@ -37,7 +39,8 @@ object Main extends App {
     }
   }
 
-  val defaultOverrides = Configuration("shows" -> List("261862" -> "chuunibyou-demo-koi-ga-shitai"))
+  val defaultOverrides = Configuration("shows" -> List("261862" -> "chuunibyou-demo-koi-ga-shitai",
+                                                       "272138" -> "golden-time"))
   val overrideConfig = {
     try {
       Configuration.load("overrides.conf") include defaultOverrides
@@ -72,20 +75,20 @@ object Main extends App {
         x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head
       }
       val showRequiresSync = (activity:TraktActivity) => {
-        library.exists(x => x.anime.slug.toLowerCase == activity.show.title.toLowerCase
+        library.exists(x => x.anime.slug.toLowerCase == activity.show.slug.toLowerCase
                             && x.episodes_watched < activity.episode.episode)
       }
       val overrideShowNames = (x:TraktActivity) => {
-        x.copy(x.show.copy(overrideShows.find(y => y._1 == x.show.tvdb_id).map(x => x._2).getOrElse(x.show.title)))
+        x.copy(x.show.copy(slug = overrideShows.find(y => y._1 == x.show.tvdb_id).map(x => x._2).getOrElse(x.show.title)))
       }
       val shows = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
-                                        .groupBy(_.show.title)
-                                        .map(highestEpisode)
-                                        .map(overrideShowNames)
-                                        .filter(showRequiresSync)
 
-      shows.foreach(show => syncTraktToHummingbird(show, library))
+      shows.groupBy(_.show.title)
+           .map(highestEpisode)
+           .map(overrideShowNames)
+           .filter(showRequiresSync)
+           .foreach(show => syncTraktToHummingbird(show, library))
       Thread.sleep(300000)
     }
     catch {
@@ -102,7 +105,7 @@ object Main extends App {
 
   def syncTraktToHummingbird(traktActivity:TraktActivity,
                              hummingbirdLibrary:List[HummingbirdShow])(implicit config:HummingbirdConfig) {
-    val hummingbirdShow = hummingbirdLibrary.find(x => x.anime.slug.toLowerCase == traktActivity.show.title.toLowerCase).get
+    val hummingbirdShow = hummingbirdLibrary.find(x => x.anime.slug.toLowerCase == traktActivity.show.slug.toLowerCase).get
     val slug = hummingbirdShow.anime.slug
 
     if(traktActivity.episode.episode - hummingbirdShow.episodes_watched < 0) return
@@ -139,8 +142,10 @@ object Main extends App {
   }
 
   def getRecentTraktActivity(username:String, apiKey: String) = {
-    val con = mkConnection(s"$TRAKT_API/activity/user.json/$apiKey/$username/episode/scrobble")
-    (JsonMethods.parse(con.asString) \ "activity").children.map(x => x.extract[TraktActivity]).reverse
+    val con = mkConnection(s"$TRAKT_API/activity/user.json/$apiKey/$username/episode/scrobble/${String.valueOf((System.currentTimeMillis()-172800000l)/1000l)}/${System.currentTimeMillis()/1000l}")
+    (JsonMethods.parse(con.asString) \ "activity").transformField({
+      case JField("url", JString(url)) => ("slug", JString(url.substring(url.lastIndexOf('/')+1)))
+    }).children.map(x => x.extract[TraktActivity])
   }
 
   object TupleConverter extends ValueConverter[(Int, String)] {
