@@ -79,7 +79,7 @@ object Main extends App {
                             && x.episodes_watched < activity.episode.episode)
       }
       val overrideShowNames = (x:TraktActivity) => {
-        x.copy(x.show.copy(slug = overrideShows.find(y => y._1 == x.show.tvdb_id).map(x => x._2).getOrElse(x.show.title)))
+        x.copy(x.show.copy(slug = overrideShows.find(y => y._1 == x.show.tvdb_id).map(x => x._2).getOrElse(x.show.slug)))
       }
       val shows = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
@@ -142,7 +142,7 @@ object Main extends App {
   }
 
   def getRecentTraktActivity(username:String, apiKey: String) = {
-    val con = mkConnection(s"$TRAKT_API/activity/user.json/$apiKey/$username/episode/scrobble/${String.valueOf((System.currentTimeMillis()-172800000l)/1000l)}/${System.currentTimeMillis()/1000l}")
+    val con = mkConnection(s"$TRAKT_API/activity/user.json/$apiKey/$username/episode/scrobble/${String.valueOf((System.currentTimeMillis()-10800000l)/1000l)}/${System.currentTimeMillis()/1000l}")
     (JsonMethods.parse(con.asString) \ "activity").transformField({
       case JField("url", JString(url)) => ("slug", JString(url.substring(url.lastIndexOf('/')+1)))
     }).children.map(x => x.extract[TraktActivity])
