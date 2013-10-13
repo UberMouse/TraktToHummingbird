@@ -46,7 +46,7 @@ object Main extends App {
   val overrideConfig = {
     try {
       val config = Configuration.load("overrides.conf") include defaultOverrides
-      config.set[List[(Int, String)]]("shows", config[List[(Int, String)]]("shows") ++ defaultOverrides[List[(Int, String)]]("shows"))
+      Configuration("shows" -> (config[List[(Int, String)]]("shows") ++ defaultOverrides[List[(Int, String)]]("shows")).distinct)
     } catch {
       case e:Exception => {
         defaultOverrides.save("overrides.conf")
@@ -96,7 +96,10 @@ object Main extends App {
       Thread.sleep(300000)
     }
     catch {
-      case e: Exception => Thread.sleep(10000)
+      case e: Exception => {
+        println(e.getMessage)
+        Thread.sleep(10000)
+      }
     }
   }
 
