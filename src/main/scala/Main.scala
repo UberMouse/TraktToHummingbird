@@ -40,10 +40,13 @@ object Main extends App {
   }
 
   val defaultOverrides = Configuration("shows" -> List("261862" -> "chuunibyou-demo-koi-ga-shitai",
-                                                       "272138" -> "golden-time"))
+                                                       "272138" -> "golden-time",
+                                                       "272314" -> "my-mental-choices-are-completely-interfering-with-my-school-romantic-comedy"))
+
   val overrideConfig = {
     try {
-      Configuration.load("overrides.conf") include defaultOverrides
+      val config = Configuration.load("overrides.conf") include defaultOverrides
+      config.set[List[(Int, String)]]("shows", config[List[(Int, String)]]("shows") ++ defaultOverrides[List[(Int, String)]]("shows"))
     } catch {
       case e:Exception => {
         defaultOverrides.save("overrides.conf")
@@ -89,6 +92,7 @@ object Main extends App {
            .map(overrideShowNames)
            .filter(showRequiresSync)
            .foreach(show => syncTraktToHummingbird(show, library))
+
       Thread.sleep(300000)
     }
     catch {
