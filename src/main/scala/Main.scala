@@ -1,13 +1,13 @@
-import java.util.Date
 import org.json4s.JsonAST.{JField, JString}
-import org.streum.configrity.converter.{ValueConverter, ListConverter}
+import org.streum.configrity.converter.ValueConverter
 import scalaj.http._
 import org.json4s.native.JsonMethods
 import org.json4s.DefaultFormats
 import org.streum.configrity._
 
 object Main extends App {
-  implicit val TUPLE_CONVERTER = TupleConverter
+  implicit val TUPLE_CONVERTER1 = TupleConverter1
+  implicit val TUPLE_CONVERTER2 = TupleConverter2
   val HUMMINGBIRD_API = "https://hummingbirdv1.p.mashape.com"
   val TRAKT_API = "http://api.trakt.tv"
 
@@ -41,12 +41,25 @@ object Main extends App {
 
   val defaultOverrides = Configuration("shows" -> List("261862" -> "chuunibyou-demo-koi-ga-shitai",
                                                        "272138" -> "golden-time",
-                                                       "272314" -> "my-mental-choices-are-completely-interfering-with-my-school-romantic-comedy"))
+                                                       "272314" -> "noucome-my-mental-choices-are-completely-interfering-with-my-school-romantic-comedy",
+                                                       "84768" -> "kiss-x-sis-tv",
+                                                       "270062" -> "watashi-ga-motenai-no-wa-dou-kangaetemo-omaera-ga-warui",
+                                                       "257888" -> "acchi-kocchi",
+                                                       "79415" -> "welcome-to-the-n-h-k",
+                                                       "80096" -> "tengen-toppa-gurren-lagann"),
+                                       "seasons" -> List("79525-s2" -> "code-geass-lelouch-of-the-rebellion-r2"))
 
   val overrideConfig = {
     try {
-      val config = Configuration.load("overrides.conf") include defaultOverrides
-      Configuration("shows" -> (config[List[(Int, String)]]("shows") ++ defaultOverrides[List[(Int, String)]]("shows")).distinct)
+      val config = Configuration.load("overrides.conf")
+
+      val onDiskShows = config[List[(Int, String)]]("shows")
+      val defaultShows = defaultOverrides[List[(Int, String)]]("shows")
+      val onDiskSeasons = config[List[(String, String)]]("seasons")
+      val defaultSeasons = defaultOverrides[List[(String, String)]]("seasons")
+
+      Configuration("shows" -> (onDiskShows ++ defaultShows).distinct,
+                    "seasons" -> (onDiskSeasons ++ defaultSeasons).distinct)
     } catch {
       case e:Exception => {
         defaultOverrides.save("overrides.conf")
@@ -55,6 +68,7 @@ object Main extends App {
     }
   }
 
+  SSLCert.disableCertificateValidation()
 
   val traktUsername = config[String]("trakt-username")
   val hummingbirdUsername = config[String]("hummingbird-username")
@@ -69,10 +83,12 @@ object Main extends App {
                                                                              hummingbirdEmail,
                                                                              hummingbirdUsername),
                                                      mashapeAuth)
+
   while (true) {
     try {
       val library = retrieveHummingBirdLibrary(hummingbirdUsername)
       val overrideShows = overrideConfig[List[(Int, String)]]("shows")
+      val overrideSeasons = overrideConfig[List[(String, String)]]("seasons")
 
       val highestEpisode = (x:(String, List[TraktActivity])) => {
         x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head
@@ -84,14 +100,24 @@ object Main extends App {
       val overrideShowNames = (x:TraktActivity) => {
         x.copy(x.show.copy(slug = overrideShows.find(y => y._1 == x.show.tvdb_id).map(x => x._2).getOrElse(x.show.slug)))
       }
+
+      val fixSeasons = (x:TraktActivity) => {
+        val newSlug = overrideSeasons.find(y => s"${x.show.tvdb_id}-s${x.episode.season}" == y._1)
+                                     .map(x => x._2)
+                                     .getOrElse(x.show.slug)
+        x.copy(x.show.copy(slug = newSlug))
+      }
+
       val shows = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
 
-      shows.groupBy(_.show.title)
-           .map(highestEpisode)
-           .map(overrideShowNames)
-           .filter(showRequiresSync)
-           .foreach(show => syncTraktToHummingbird(show, library))
+      val reMappedShows = shows.groupBy(_.show.title)
+                               .map(highestEpisode)
+                               .map(overrideShowNames)
+                               .map(fixSeasons)
+
+      reMappedShows.filter(showRequiresSync)
+                   .foreach(show => syncTraktShowToHummingbird(show, library))
 
       Thread.sleep(300000)
     }
@@ -110,8 +136,8 @@ object Main extends App {
     else con
   }
 
-  def syncTraktToHummingbird(traktActivity:TraktActivity,
-                             hummingbirdLibrary:List[HummingbirdShow])(implicit config:HummingbirdConfig) {
+  def syncTraktShowToHummingbird(traktActivity:TraktActivity,
+                                 hummingbirdLibrary:List[HummingbirdShow])(implicit config:HummingbirdConfig) {
     val hummingbirdShow = hummingbirdLibrary.find(x => x.anime.slug.toLowerCase == traktActivity.show.slug.toLowerCase).get
     val slug = hummingbirdShow.anime.slug
 
@@ -126,7 +152,9 @@ object Main extends App {
     val con = mkConnection(s"$HUMMINGBIRD_API/libraries/$slug",
                            post = true,
                            config.mashapeAuth).params(updateParams, "auth_token" -> config.authToken)
-    if(con.asString.contains(slug))
+    val string = con.asString
+    println(string)
+    if(string.contains(slug))
       println(s"Synced $slug to Hummingbird")
     else
       println(s"Failed to sync $slug to Hummingbird")
@@ -155,10 +183,17 @@ object Main extends App {
     }).children.map(x => x.extract[TraktActivity])
   }
 
-  object TupleConverter extends ValueConverter[(Int, String)] {
+  object TupleConverter1 extends ValueConverter[(Int, String)] {
     def parse( s: String ) = {
       val split = s.split(",").map(x => x.replaceAll("[\\(\\)]", ""))
-      (Integer.parseInt(split(0)),split(1))
+      (Integer.parseInt(split(0)), split(1))
+    }
+  }
+
+  object TupleConverter2 extends ValueConverter[(String, String)] {
+    def parse( s: String ) = {
+      val split = s.split(",").map(x => x.replaceAll("[\\(\\)]", ""))
+      (split(0), split(1))
     }
   }
 }
