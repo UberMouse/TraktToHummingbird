@@ -87,9 +87,7 @@ object Main extends App {
         getOverride(x.show.tvdb_id) match {
           case Some(show) => {
             val seasons = show.SeasonOverrides
-            val zip = seasons.keys.zip(seasons.values)
-            val option = seasons.get(x.episode.season.toString())
-            option match {
+            seasons.get(x.episode.season.toString()) match {
               case Some(slug) => x.copy(x.show.copy(slug = slug))
               case None => x
             }
