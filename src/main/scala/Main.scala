@@ -11,7 +11,7 @@ object Main extends App {
   implicit val TUPLE_CONVERTER2 = TupleConverter2
   val HUMMINGBIRD_API = "https://hummingbirdv1.p.mashape.com"
   val TRAKT_API = "http://api.trakt.tv"
-  val MAPPING_API = "http://localhost:50341/api/"
+  val MAPPING_API = "http://localhost:50341/api"
 
   case class HummingbirdConfig(authToken:String, mashapeAuth:String)
 
@@ -22,7 +22,9 @@ object Main extends App {
   case class HummingbirdAnime(title:String, slug:String)
   case class HummingbirdShow(episodes_watched:BigInt, anime:HummingbirdAnime)
 
-  case class HummingbirdMapping(TvDBId:Int, OverrideSlug:String, SeasonOverrides:Map[Int, String], SpecialOverrides:Map[Int, String])
+  sealed abstract class HummingbirdMapping
+  case class ValidMapping(TvDBId:Int, OverrideSlug:String, SeasonOverrides:Map[Int, String], SpecialOverrides:Map[Int, String]) extends HummingbirdMapping
+  case class EmptyMapping() extends HummingbirdMapping
 
   val defaults = Configuration("mashape-auth" -> "nZMJT9teIblQikXff081wAMuIDuFmkas",
                                "trakt-api-key" -> "fillmeout",
@@ -63,7 +65,8 @@ object Main extends App {
   val overrides = new mutable.HashMap[Int, HummingbirdMapping]
 
   val json = mkConnection(s"$MAPPING_API/mapping").asString
-  val slugMappings = Map(JsonMethods.parse(json).children.map(x => x.extract[HummingbirdMapping]).map(x => (x.TvDBId, x)):_*)
+  for(mapping <- JsonMethods.parse(json).children.map(x => x.extract[ValidMapping]))
+    overrides(mapping.TvDBId) = mapping
 
   while (true) {
     try {
@@ -77,11 +80,11 @@ object Main extends App {
                             && y.episodes_watched < x.episode.episode)
       }
       val overrideShowNames = (x:TraktActivity) => {
-        x.copy(x.show.copy(slug = slugMappings.get(x.show.tvdb_id).map(x => x.OverrideSlug).getOrElse(x.show.slug)))
+        x.copy(x.show.copy(slug = getOverride(x.show.tvdb_id).map(x => x.OverrideSlug).getOrElse(x.show.slug)))
       }
 
       val fixSeasons = (x:TraktActivity) => {
-        slugMappings.get(x.show.tvdb_id) match {
+        getOverride(x.show.tvdb_id) match {
           case Some(show) => {
             val seasons = show.SeasonOverrides
             seasons.get(x.episode.season.toInt) match {
@@ -98,6 +101,8 @@ object Main extends App {
       val shows = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
 
+      updateOverrides(shows)
+
       val reMappedShows = shows.groupBy(_.show.title)
                                .map(highestEpisode)
                                .map(overrideShowNames)
@@ -106,13 +111,47 @@ object Main extends App {
       reMappedShows.filter(showRequiresSync)
                    .foreach(show => syncTraktShowToHummingbird(show, library))
 
+      println("Synced")
+
       Thread.sleep(300000)
     }
     catch {
       case e: Exception => {
-        println(e.getMessage)
+        e.printStackTrace()
         Thread.sleep(10000)
       }
+    }
+  }
+
+  def updateOverrides(activities: List[TraktActivity]) {
+    val needUpdate = activities.map(x => {
+      getOverride(x.show.tvdb_id) match {
+        case Some(_) => -1
+        case None => x.show.tvdb_id
+      }
+    }).filter(_ > -1)
+
+    val json = mkConnection(s"$MAPPING_API/mapping/bulk/${needUpdate.mkString(",")}").asString
+    val parsedMappings = JsonMethods.parse(json).children.map(x => x.extract[ValidMapping])
+
+    for(mapping <- parsedMappings)
+      overrides(mapping.TvDBId) = mapping
+
+    for(id <- needUpdate) {
+      getOverride(id) match {
+        case Some(_) => {}
+        case None => overrides(id) = EmptyMapping()
+      }
+    }
+  }
+
+  def getOverride(tvdbId:Int):Option[ValidMapping] = {
+    overrides.get(tvdbId) match {
+      case Some(mapping) => mapping match {
+        case m:EmptyMapping => None
+        case m:ValidMapping => Some(m)
+      }
+      case None => None
     }
   }
 
