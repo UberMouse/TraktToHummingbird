@@ -23,7 +23,7 @@ object Main extends App {
   case class HummingbirdShow(episodes_watched:BigInt, anime:HummingbirdAnime)
 
   sealed abstract class HummingbirdMapping
-  case class ValidMapping(TvDBId:Int, OverrideSlug:String, SeasonOverrides:Map[Int, String], SpecialOverrides:Map[Int, String]) extends HummingbirdMapping
+  case class ValidMapping(TvDBId:String, OverrideSlug:String, SeasonOverrides:Map[String, String], SpecialOverrides:Map[String, String]) extends HummingbirdMapping
   case class EmptyMapping() extends HummingbirdMapping
 
   val defaults = Configuration("mashape-auth" -> "nZMJT9teIblQikXff081wAMuIDuFmkas",
@@ -62,7 +62,7 @@ object Main extends App {
                                                                              hummingbirdUsername),
                                                      mashapeAuth)
 
-  val overrides = new mutable.HashMap[Int, HummingbirdMapping]
+  val overrides = new mutable.HashMap[String, HummingbirdMapping]
 
   val json = mkConnection(s"$MAPPING_API/mapping").asString
   for(mapping <- JsonMethods.parse(json).children.map(x => x.extract[ValidMapping]))
@@ -87,10 +87,10 @@ object Main extends App {
         getOverride(x.show.tvdb_id) match {
           case Some(show) => {
             val seasons = show.SeasonOverrides
-            seasons.get(x.episode.season.toInt) match {
-              case Some(slug) => {
-                x.copy(x.show.copy(slug = slug))
-              }
+            val zip = seasons.keys.zip(seasons.values)
+            val option = seasons.get(x.episode.season.toString())
+            option match {
+              case Some(slug) => x.copy(x.show.copy(slug = slug))
               case None => x
             }
           }
@@ -131,6 +131,8 @@ object Main extends App {
       }
     }).filter(_ > -1)
 
+    if(needUpdate.length == 0) return
+
     val json = mkConnection(s"$MAPPING_API/mapping/bulk/${needUpdate.mkString(",")}").asString
     val parsedMappings = JsonMethods.parse(json).children.map(x => x.extract[ValidMapping])
 
@@ -140,13 +142,13 @@ object Main extends App {
     for(id <- needUpdate) {
       getOverride(id) match {
         case Some(_) => {}
-        case None => overrides(id) = EmptyMapping()
+        case None => overrides(id.toString) = EmptyMapping()
       }
     }
   }
 
   def getOverride(tvdbId:Int):Option[ValidMapping] = {
-    overrides.get(tvdbId) match {
+    overrides.get(tvdbId.toString) match {
       case Some(mapping) => mapping match {
         case m:EmptyMapping => None
         case m:ValidMapping => Some(m)
