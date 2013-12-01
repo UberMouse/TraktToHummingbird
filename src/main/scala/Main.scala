@@ -1,5 +1,6 @@
 import org.json4s.JsonAST.{JField, JString}
 import org.streum.configrity.converter.ValueConverter
+import scala.collection.mutable
 import scalaj.http._
 import org.json4s.native.JsonMethods
 import org.json4s.DefaultFormats
@@ -10,6 +11,7 @@ object Main extends App {
   implicit val TUPLE_CONVERTER2 = TupleConverter2
   val HUMMINGBIRD_API = "https://hummingbirdv1.p.mashape.com"
   val TRAKT_API = "http://api.trakt.tv"
+  val MAPPING_API = "http://localhost:50341/api/"
 
   case class HummingbirdConfig(authToken:String, mashapeAuth:String)
 
@@ -20,12 +22,15 @@ object Main extends App {
   case class HummingbirdAnime(title:String, slug:String)
   case class HummingbirdShow(episodes_watched:BigInt, anime:HummingbirdAnime)
 
+  case class HummingbirdMapping(TvDBId:Int, OverrideSlug:String, SeasonOverrides:Map[Int, String], SpecialOverrides:Map[Int, String])
+
   val defaults = Configuration("mashape-auth" -> "nZMJT9teIblQikXff081wAMuIDuFmkas",
                                "trakt-api-key" -> "fillmeout",
                                "trakt-username" -> "fillmeout",
                                "hummingbird-username" -> "fillmeout",
                                "hummingbird-email" -> "fillmeout",
                                "hummingbird-password" -> "fillmeout")
+
   val config = {
     try {
       Configuration.load("config.conf") include defaults
@@ -35,35 +40,6 @@ object Main extends App {
         println("No config was found, created one with defaults. Please fill out config.conf")
         System.exit(-1)
         defaults
-      }
-    }
-  }
-
-  val defaultOverrides = Configuration("shows" -> List("261862" -> "chuunibyou-demo-koi-ga-shitai",
-                                                       "272138" -> "golden-time",
-                                                       "272314" -> "noucome-my-mental-choices-are-completely-interfering-with-my-school-romantic-comedy",
-                                                       "84768" -> "kiss-x-sis-tv",
-                                                       "270062" -> "watashi-ga-motenai-no-wa-dou-kangaetemo-omaera-ga-warui",
-                                                       "257888" -> "acchi-kocchi",
-                                                       "79415" -> "welcome-to-the-n-h-k",
-                                                       "80096" -> "tengen-toppa-gurren-lagann"),
-                                       "seasons" -> List("79525-s2" -> "code-geass-lelouch-of-the-rebellion-r2"))
-
-  val overrideConfig = {
-    try {
-      val config = Configuration.load("overrides.conf")
-
-      val onDiskShows = config[List[(Int, String)]]("shows")
-      val defaultShows = defaultOverrides[List[(Int, String)]]("shows")
-      val onDiskSeasons = config[List[(String, String)]]("seasons")
-      val defaultSeasons = defaultOverrides[List[(String, String)]]("seasons")
-
-      Configuration("shows" -> (onDiskShows ++ defaultShows).distinct,
-                    "seasons" -> (onDiskSeasons ++ defaultSeasons).distinct)
-    } catch {
-      case e:Exception => {
-        defaultOverrides.save("overrides.conf")
-        defaultOverrides
       }
     }
   }
@@ -84,28 +60,39 @@ object Main extends App {
                                                                              hummingbirdUsername),
                                                      mashapeAuth)
 
+  val overrides = new mutable.HashMap[Int, HummingbirdMapping]
+
+  val json = mkConnection(s"$MAPPING_API/mapping").asString
+  val slugMappings = Map(JsonMethods.parse(json).children.map(x => x.extract[HummingbirdMapping]).map(x => (x.TvDBId, x)):_*)
+
   while (true) {
     try {
       val library = retrieveHummingBirdLibrary(hummingbirdUsername)
-      val overrideShows = overrideConfig[List[(Int, String)]]("shows")
-      val overrideSeasons = overrideConfig[List[(String, String)]]("seasons")
 
       val highestEpisode = (x:(String, List[TraktActivity])) => {
         x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head
       }
-      val showRequiresSync = (activity:TraktActivity) => {
-        library.exists(x => x.anime.slug.toLowerCase == activity.show.slug.toLowerCase
-                            && x.episodes_watched < activity.episode.episode)
+      val showRequiresSync = (x:TraktActivity) => {
+        library.exists(y => y.anime.slug.toLowerCase == x.show.slug.toLowerCase
+                            && y.episodes_watched < x.episode.episode)
       }
       val overrideShowNames = (x:TraktActivity) => {
-        x.copy(x.show.copy(slug = overrideShows.find(y => y._1 == x.show.tvdb_id).map(x => x._2).getOrElse(x.show.slug)))
+        x.copy(x.show.copy(slug = slugMappings.get(x.show.tvdb_id).map(x => x.OverrideSlug).getOrElse(x.show.slug)))
       }
 
       val fixSeasons = (x:TraktActivity) => {
-        val newSlug = overrideSeasons.find(y => s"${x.show.tvdb_id}-s${x.episode.season}" == y._1)
-                                     .map(x => x._2)
-                                     .getOrElse(x.show.slug)
-        x.copy(x.show.copy(slug = newSlug))
+        slugMappings.get(x.show.tvdb_id) match {
+          case Some(show) => {
+            val seasons = show.SeasonOverrides
+            seasons.get(x.episode.season.toInt) match {
+              case Some(slug) => {
+                x.copy(x.show.copy(slug = slug))
+              }
+              case None => x
+            }
+          }
+          case None => x
+        }
       }
 
       val shows = getRecentTraktActivity(traktUsername,
