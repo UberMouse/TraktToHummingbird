@@ -1,6 +1,7 @@
 import org.json4s.JsonAST.{JField, JString}
 import org.streum.configrity.converter.ValueConverter
 import scala.collection.mutable
+import scala.math.BigInt
 import scalaj.http._
 import org.json4s.native.JsonMethods
 import org.json4s.DefaultFormats
@@ -66,7 +67,7 @@ object Main extends App {
 
   val json = mkConnection(s"$MAPPING_API/mapping").asString
   for(mapping <- JsonMethods.parse(json).children.map(x => x.extract[ValidMapping]))
-    overrides(mapping.TvDBId) = mapping
+    upsertMapping(mapping, load = true)
 
   while (true) {
     try {
@@ -83,16 +84,29 @@ object Main extends App {
         x.copy(x.show.copy(slug = getOverride(x.show.tvdb_id).map(x => x.OverrideSlug).getOrElse(x.show.slug)))
       }
 
-      val fixSeasons = (x:TraktActivity) => {
+      val fixGeneric = (x:TraktActivity, mapExtractor: ValidMapping => Map[String, String], matchExtractor: TraktActivity => String) => {
         getOverride(x.show.tvdb_id) match {
-          case Some(show) => {
-            val seasons = show.SeasonOverrides
-            seasons.get(x.episode.season.toString()) match {
+          case Some(show) =>
+            val map = mapExtractor(show)
+            map.get(matchExtractor(x)) match {
               case Some(slug) => x.copy(x.show.copy(slug = slug))
               case None => x
             }
-          }
           case None => x
+        }
+      }
+      
+      val fixSeasons = (x:TraktActivity) => fixGeneric(x,
+                                                      (m:ValidMapping) => m.SeasonOverrides,
+                                                      (t:TraktActivity) => t.episode.season.toString())
+
+      val fixSpecials = (x:TraktActivity) => {
+        x.episode.season.toInt match {
+          case 0 =>
+            fixGeneric(x,
+                      (m:ValidMapping) => m.SpecialOverrides,
+                      (t:TraktActivity) => t.episode.episode.toString())
+          case _ => x
         }
       }
 
@@ -105,11 +119,12 @@ object Main extends App {
                                .map(highestEpisode)
                                .map(overrideShowNames)
                                .map(fixSeasons)
+                               .map(fixSpecials)
 
       reMappedShows.filter(showRequiresSync)
                    .foreach(show => syncTraktShowToHummingbird(show, library))
 
-      println("Synced")
+      println("Sync complete")
 
       Thread.sleep(300000)
     }
@@ -135,11 +150,11 @@ object Main extends App {
     val parsedMappings = JsonMethods.parse(json).children.map(x => x.extract[ValidMapping])
 
     for(mapping <- parsedMappings)
-      overrides(mapping.TvDBId) = mapping
+      upsertMapping(mapping)
 
     for(id <- needUpdate) {
       getOverride(id) match {
-        case Some(_) => {}
+        case Some(_) =>
         case None => overrides(id.toString) = EmptyMapping()
       }
     }
@@ -153,6 +168,28 @@ object Main extends App {
       }
       case None => None
     }
+  }
+
+  def upsertMapping(m:ValidMapping, load:Boolean = false) {
+    val map = m.SpecialOverrides
+
+    val unFolded = map.foldLeft(map.empty) {
+      case(newMap, kv) =>
+        val (key, value) = kv
+        if(key.contains("-")) {
+          val Array(l, r) = key.split("-")
+          (l.toInt to r.toInt).foldLeft(newMap) {
+            case(map, i) =>
+              map + ((i.toString, value))
+          }
+        }
+        else {
+          newMap + ((key, value))
+        }
+    }
+
+    overrides(m.TvDBId) = m.copy(SpecialOverrides = unFolded)
+    if(!load) println(s"Upserted mapping: $m")
   }
 
   def mkConnection(url:String, post:Boolean = false, mashapeAuth:String = "") = {
@@ -175,6 +212,7 @@ object Main extends App {
       else
         "increment_episodes" -> "true"
     }
+
     val con = mkConnection(s"$HUMMINGBIRD_API/libraries/$slug",
                            post = true,
                            config.mashapeAuth).params(updateParams, "auth_token" -> config.authToken)
