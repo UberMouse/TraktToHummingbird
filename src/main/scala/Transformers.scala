@@ -8,19 +8,16 @@ object Transformers {
 
   val showRequiresSync = (x:TraktActivity, library:List[HummingbirdShow]) => {
     library.exists(y => y.anime.slug.toLowerCase == x.show.slug.toLowerCase
-      && y.episodes_watched < x.episode.episode)
+                     && y.episodes_watched < x.episode.episode)
   }
   val overrideShowNames = (x:TraktActivity, getMapping: Int => Option[ValidMapping]) => {
     x.copy(x.show.copy(slug = getMapping(x.show.tvdb_id).map(x => x.OverrideSlug).getOrElse(x.show.slug)))
   }
 
   val fixGeneric = (x:TraktActivity, mapExtractor: ValidMapping => Map[String, String], keyExtractor: TraktActivity => String, getMapping: Int => Option[ValidMapping]) => {
-    val fixed = for{
-      overrideMapping <- getMapping(x.show.tvdb_id)
-      slug <- mapExtractor(overrideMapping).get(keyExtractor(x))
-    } yield x.copy(x.show.copy(slug = slug))
-
-    fixed getOrElse x
+    getMapping(x.show.tvdb_id).flatMap(y => mapExtractor(y).get(keyExtractor(x)))
+                              .map(slug => x.copy(x.show.copy(slug = slug)))
+                              .getOrElse(x)
   }
 
   val fixSeasons = (x:TraktActivity, getMapping: Int => Option[ValidMapping]) => fixGeneric(x,

@@ -39,12 +39,11 @@ object Main extends App {
     try {
       Configuration.load("config.conf") include defaults
     } catch {
-      case e:Exception => {
+      case e:Exception =>
         defaults.save("config.conf")
         println("No config was found, created one with defaults. Please fill out config.conf")
         System.exit(-1)
         defaults
-      }
     }
   }
 
@@ -135,22 +134,10 @@ object Main extends App {
     }
   }
 
-  def upsertMapping(mapping:ValidMapping, load:Boolean = false) {
-    val map = mapping.SpecialOverrides
+  def unfoldRangeKeys(m:Map[String, String]) = m.flatMap{ case (k,v) => (k split "-") map ((_,v)) }
 
-    val unFolded = map.foldLeft(map.empty) {
-      case(newMap, kv) =>
-        val (key, value) = kv
-        if(key.contains("-")) {
-          val Array(l, r) = key.split("-")
-          (l.toInt to r.toInt).foldLeft(newMap) {
-            case(m, i) => m + ((i.toString, value))
-          }
-        }
-        else {
-          newMap + ((key, value))
-        }
-    }
+  def upsertMapping(mapping:ValidMapping, load:Boolean = false) {
+    val unFolded = unfoldRangeKeys(mapping.SpecialOverrides)
 
     overrides(mapping.TvDBId) = mapping.copy(SpecialOverrides = unFolded)
     if(!load) println(s"Upserted mapping: $mapping")
@@ -180,9 +167,8 @@ object Main extends App {
     val con = mkConnection(s"$HUMMINGBIRD_API/libraries/$slug",
                            post = true,
                            config.mashapeAuth).params(updateParams, "auth_token" -> config.authToken)
-    val string = con.asString
-    println(string)
-    if(string.contains(slug))
+    val response = con.asString
+    if(response.contains(slug))
       println(s"Synced $slug to Hummingbird")
     else
       println(s"Failed to sync $slug to Hummingbird")
