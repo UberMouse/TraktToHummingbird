@@ -10,7 +10,9 @@ object ApplicationBuild extends Build {
       libraryDependencies ++= Seq(
         "org.json4s" %% "json4s-native" % "3.2.5",
         "org.scalaj" %% "scalaj-http" % "0.3.10",
-        "org.streum" %% "configrity-core" % "1.0.0"
+        "org.streum" %% "configrity-core" % "1.0.0",
+        "org.scalacheck" %% "scalacheck" % "1.10.1",
+        "org.scalatest" %% "scalatest" % "2.0.RC1" % "test"
       )
     )
   )

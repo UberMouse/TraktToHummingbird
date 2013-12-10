@@ -6,6 +6,7 @@ import scalaj.http._
 import org.json4s.native.JsonMethods
 import org.json4s.DefaultFormats
 import org.streum.configrity._
+import Transformers._
 
 object Main extends App {
   implicit val TUPLE_CONVERTER1 = TupleConverter1
@@ -73,55 +74,20 @@ object Main extends App {
     try {
       val library = retrieveHummingBirdLibrary(hummingbirdUsername)
 
-      val highestEpisode = (x:(String, List[TraktActivity])) => {
-        x._2.sortWith((x, y) => x.episode.episode > y.episode.episode).head
-      }
-      val showRequiresSync = (x:TraktActivity) => {
-        library.exists(y => y.anime.slug.toLowerCase == x.show.slug.toLowerCase
-                            && y.episodes_watched < x.episode.episode)
-      }
-      val overrideShowNames = (x:TraktActivity) => {
-        x.copy(x.show.copy(slug = getOverride(x.show.tvdb_id).map(x => x.OverrideSlug).getOrElse(x.show.slug)))
-      }
-
-      val fixGeneric = (x:TraktActivity, mapExtractor: ValidMapping => Map[String, String], matchExtractor: TraktActivity => String) => {
-        getOverride(x.show.tvdb_id) match {
-          case Some(show) =>
-            val map = mapExtractor(show)
-            map.get(matchExtractor(x)) match {
-              case Some(slug) => x.copy(x.show.copy(slug = slug))
-              case None => x
-            }
-          case None => x
-        }
-      }
-      
-      val fixSeasons = (x:TraktActivity) => fixGeneric(x,
-                                                      (m:ValidMapping) => m.SeasonOverrides,
-                                                      (t:TraktActivity) => t.episode.season.toString())
-
-      val fixSpecials = (x:TraktActivity) => {
-        x.episode.season.toInt match {
-          case 0 =>
-            fixGeneric(x,
-                      (m:ValidMapping) => m.SpecialOverrides,
-                      (t:TraktActivity) => t.episode.episode.toString())
-          case _ => x
-        }
-      }
-
       val shows = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
 
       updateOverrides(shows)
 
-      val reMappedShows = shows.groupBy(_.show.title)
-                               .map(highestEpisode)
-                               .map(overrideShowNames)
-                               .map(fixSeasons)
-                               .map(fixSpecials)
+      val getMapping = (tvdb_id:Int) => getOverride(tvdb_id)
 
-      reMappedShows.filter(showRequiresSync)
+      val reMappedShows = shows.groupBy(_.show.title)
+                               .map(x => highestEpisode(x._2))
+                               .map(x => overrideShowNames(x, (x:Int) => getOverride(x)))
+                               .map(x => fixSeasons(x, getMapping))
+                               .map(x => fixSpecials(x, getMapping))
+
+      reMappedShows.filter(x => showRequiresSync(x, library))
                    .foreach(show => syncTraktShowToHummingbird(show, library))
 
       println("Sync complete")
@@ -129,10 +95,9 @@ object Main extends App {
       Thread.sleep(300000)
     }
     catch {
-      case e: Exception => {
-        e.printStackTrace()
+      case e: Exception =>
+        println(e.getMessage)
         Thread.sleep(10000)
-      }
     }
   }
 
@@ -170,8 +135,8 @@ object Main extends App {
     }
   }
 
-  def upsertMapping(m:ValidMapping, load:Boolean = false) {
-    val map = m.SpecialOverrides
+  def upsertMapping(mapping:ValidMapping, load:Boolean = false) {
+    val map = mapping.SpecialOverrides
 
     val unFolded = map.foldLeft(map.empty) {
       case(newMap, kv) =>
@@ -179,8 +144,7 @@ object Main extends App {
         if(key.contains("-")) {
           val Array(l, r) = key.split("-")
           (l.toInt to r.toInt).foldLeft(newMap) {
-            case(map, i) =>
-              map + ((i.toString, value))
+            case(m, i) => m + ((i.toString, value))
           }
         }
         else {
@@ -188,8 +152,8 @@ object Main extends App {
         }
     }
 
-    overrides(m.TvDBId) = m.copy(SpecialOverrides = unFolded)
-    if(!load) println(s"Upserted mapping: $m")
+    overrides(mapping.TvDBId) = mapping.copy(SpecialOverrides = unFolded)
+    if(!load) println(s"Upserted mapping: $mapping")
   }
 
   def mkConnection(url:String, post:Boolean = false, mashapeAuth:String = "") = {
