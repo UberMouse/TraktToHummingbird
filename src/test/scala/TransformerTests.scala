@@ -6,7 +6,7 @@ import Transformers._
 /**
  * Created by Taylor on 11/12/13.
  */
-class TransformerTests extends FlatSpec with ShouldMatchers {
+class TransformerTests extends UnitSpec {
   "highestEpisode" should "return Highest Episode in passed List[TraktActivity]" in {
     def traktActivityFactory(episodeNum:Int) = TraktActivity(null, TraktEpisode(episodeNum, 0))
 
@@ -28,33 +28,20 @@ class TransformerTests extends FlatSpec with ShouldMatchers {
     showRequiresSync(traktActivityFactory(0, "show3"), library) should be (false)
   }
 
-  {
-    def traktActivityFactory(slug:String, tvdb_id:Int, episode:Int = 0, season:Int = 0) = TraktActivity(TraktShow(null, tvdb_id, slug), TraktEpisode(episode, season))
-    def validMappingFactory(slug:String, seasonMap:Map[String, String] = null, specialMap:Map[String, String] = null) = ValidMapping(null, slug, seasonMap, specialMap)
+  "overrideShowNames" should "override TraktActivity slug with new slug if override exists for TraktActivity.tvdb_id or leave intact if none exist" in {
+    overrideShowNames(traktActivityFactory("show", 0), getMapping).show.slug should be ("show")
+    overrideShowNames(traktActivityFactory("show", 1), getMapping).show.slug should be ("show1")
+  }
 
-    val getMapping = (x:Int) => {
-      x match {
-        case 0 => None
-        case 1 => Some(validMappingFactory("show1"))
-        case 2 => Some(validMappingFactory("show1", Map("1" -> "show2")))
-        case 3 => Some(validMappingFactory("show1", null, Map("1" -> "show2")))
-      }
-    }
+  "fixSeasons" should "override TraktActivity slug with new slug if season override exists for TraktActivity.tvdb_id or leave intact if none exist" in {
+    fixSeasons(traktActivityFactory("show1", 2, 0, 1), getMapping).show.slug should be ("show2")
+    fixSeasons(traktActivityFactory("show1", 2, 0, 0), getMapping).show.slug should be ("show1")
+  }
 
-    "overrideShowNames" should "override TraktActivity slug with new slug if override exists for TraktActivity.tvdb_id or leave intact if none exist" in {
-      overrideShowNames(traktActivityFactory("show", 0), getMapping).show.slug should be ("show")
-      overrideShowNames(traktActivityFactory("show", 1), getMapping).show.slug should be ("show1")
-    }
-
-    "fixSeasons" should "override TraktActivity slug with new slug if season override exists for TraktActivity.tvdb_id or leave intact if none exist" in {
-      fixSeasons(traktActivityFactory("show1", 2, 0, 1), getMapping).show.slug should be ("show2")
-      fixSeasons(traktActivityFactory("show1", 2, 0, 0), getMapping).show.slug should be ("show1")
-    }
-
-    "fixSpecials" should "override TraktActivity slug with new slug if TraktActivity.show.season is 0 and special override exists for TraktActivity.show.episode or leave intact if none exist" in {
-      fixSpecials(traktActivityFactory("show1", 3, 1, 0), getMapping).show.slug should be("show2")
-      fixSpecials(traktActivityFactory("show1", 3, 0, 0), getMapping).show.slug should be("show1")
-      fixSpecials(traktActivityFactory("show1", 3, 0, 1), getMapping).show.slug should be("show1")
-    }
+  "fixSpecials" should "override TraktActivity slug with new slug if TraktActivity.show.season is 0 and special override exists for TraktActivity.show.episode or leave intact if none exist" in {
+    fixSpecials(traktActivityFactory("show1", 3, 1, 0), getMapping).show.slug should be("show3")
+    fixSpecials(traktActivityFactory("show1", 3, 2, 0), getMapping).show.slug should be("show4")
+    fixSpecials(traktActivityFactory("show1", 3, 0, 0), getMapping).show.slug should be("show1")
+    fixSpecials(traktActivityFactory("show1", 3, 0, 1), getMapping).show.slug should be("show1")
   }
 }

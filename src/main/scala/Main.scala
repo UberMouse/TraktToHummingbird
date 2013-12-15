@@ -7,6 +7,7 @@ import org.json4s.native.JsonMethods
 import org.json4s.DefaultFormats
 import org.streum.configrity._
 import Transformers._
+import util.matching.Regex
 
 object Main extends App {
   implicit val TUPLE_CONVERTER1 = TupleConverter1
@@ -78,16 +79,7 @@ object Main extends App {
 
       updateOverrides(shows)
 
-      val getMapping = (tvdb_id:Int) => getOverride(tvdb_id)
-
-      val reMappedShows = shows.groupBy(_.show.title)
-                               .map(x => highestEpisode(x._2))
-                               .map(x => overrideShowNames(x, (x:Int) => getOverride(x)))
-                               .map(x => fixSeasons(x, getMapping))
-                               .map(x => fixSpecials(x, getMapping))
-
-      reMappedShows.filter(x => showRequiresSync(x, library))
-                   .foreach(show => syncTraktShowToHummingbird(show, library))
+      determineEpisodesToSync(shows, library).foreach(show => syncTraktShowToHummingbird(show, library))
 
       println("Sync complete")
 
@@ -98,6 +90,20 @@ object Main extends App {
         println(e.getMessage)
         Thread.sleep(10000)
     }
+  }
+
+
+  def determineEpisodesToSync(shows: List[Main.TraktActivity],
+                              library: List[Main.HummingbirdShow],
+                              getMapping: Int => Option[ValidMapping] = (tvdb_id: Int) => getOverride(tvdb_id)) = {
+
+    val reMappedShows = shows.groupBy(_.show.title)
+                             .map(x => highestEpisode(x._2))
+                             .map(x => overrideShowNames(x, getMapping))
+                             .map(x => fixSeasons(x, getMapping))
+                             .map(x => fixSpecials(x, getMapping))
+                             
+    reMappedShows.filter(x => showRequiresSync(x, library))
   }
 
   def updateOverrides(activities: List[TraktActivity]) {
@@ -134,7 +140,19 @@ object Main extends App {
     }
   }
 
-  def unfoldRangeKeys(m:Map[String, String]) = m.flatMap{ case (k,v) => (k split "-") map ((_,v)) }
+  def unfoldRangeKeys(m:Map[String, String]) = m.flatMap{
+    case (k,v) =>
+      val validRange = "[0-9]+-[0-9]+".r
+
+      k match {
+        case validRange() =>
+          val Array(l, r) = k split "-"
+          val expanded = (l.toInt to r.toInt).map(x => (x.toString, v))
+          Map(expanded:_*)
+
+        case _ => Map(k -> v)
+      }
+    }
 
   def upsertMapping(mapping:ValidMapping, load:Boolean = false) {
     val unFolded = unfoldRangeKeys(mapping.SpecialOverrides)
