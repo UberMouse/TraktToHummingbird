@@ -10,8 +10,6 @@ import Transformers._
 import util.matching.Regex
 
 object Main extends App {
-  implicit val TUPLE_CONVERTER1 = TupleConverter1
-  implicit val TUPLE_CONVERTER2 = TupleConverter2
   val HUMMINGBIRD_API = "https://hummingbirdv1.p.mashape.com"
   val TRAKT_API = "http://api.trakt.tv"
   val MAPPING_API = "http://localhost:50341/api"
@@ -213,19 +211,5 @@ object Main extends App {
     (JsonMethods.parse(con.asString) \ "activity").transformField({
       case JField("url", JString(url)) => ("slug", JString(url.substring(url.lastIndexOf('/')+1)))
     }).children.map(x => x.extract[TraktActivity])
-  }
-
-  object TupleConverter1 extends ValueConverter[(Int, String)] {
-    def parse( s: String ) = {
-      val split = s.split(",").map(x => x.replaceAll("[\\(\\)]", ""))
-      (Integer.parseInt(split(0)), split(1))
-    }
-  }
-
-  object TupleConverter2 extends ValueConverter[(String, String)] {
-    def parse( s: String ) = {
-      val split = s.split(",").map(x => x.replaceAll("[\\(\\)]", ""))
-      (split(0), split(1))
-    }
   }
 }
