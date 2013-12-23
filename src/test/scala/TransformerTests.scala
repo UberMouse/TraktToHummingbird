@@ -17,7 +17,7 @@ class TransformerTests extends UnitSpec {
   }
 
   "showRequiresSync" should "return true if library contains HummingbirdShow with slug matching TraktActivity.episode and HummingbirdShow.episodes_watched < TraktActivity.episode.episode" in {
-    def hummingbirdShowFactory(episodesWatched:Int, slug:String) = HummingbirdShow(episodesWatched, HummingbirdAnime(null, slug))
+    def hummingbirdShowFactory(episodesWatched:Int, slug:String) = HummingbirdShow(episodesWatched, HummingbirdAnime(null, slug), null, null)
     def traktActivityFactory(episode:Int, slug:String) = TraktActivity(TraktShow(null, -1, slug), TraktEpisode(episode, 0))
 
     val library = List(hummingbirdShowFactory(0, "show1"),

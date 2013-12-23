@@ -1,3 +1,4 @@
+import java.util.Date
 import org.json4s.JsonAST.{JField, JString}
 import org.streum.configrity.converter.ValueConverter
 import scala.collection.mutable
@@ -13,6 +14,8 @@ object Main extends App {
   val HUMMINGBIRD_API = "https://hummingbirdv1.p.mashape.com"
   val TRAKT_API = "http://api.trakt.tv"
   val MAPPING_API = "http://localhost:50341/api"
+  val ON_HOLD_STATUS = "on-hold"
+  val CURRENTLY_WATCHING_STATUS = "currently-watching"
 
   case class HummingbirdConfig(authToken:String, mashapeAuth:String)
 
@@ -21,7 +24,7 @@ object Main extends App {
   case class TraktActivity(show:TraktShow, episode:TraktEpisode)
 
   case class HummingbirdAnime(title:String, slug:String)
-  case class HummingbirdShow(episodes_watched:BigInt, anime:HummingbirdAnime)
+  case class HummingbirdShow(episodes_watched:BigInt, anime:HummingbirdAnime, last_watched:Date, status:String)
 
   sealed abstract class HummingbirdMapping
   case class ValidMapping(TvDBId:String, OverrideSlug:String, SeasonOverrides:Map[String, String], SpecialOverrides:Map[String, String]) extends HummingbirdMapping
@@ -70,14 +73,21 @@ object Main extends App {
 
   while (true) {
     try {
-      val library = retrieveHummingBirdLibrary(hummingbirdUsername)
+      val currentlyWatching = retrieveHummingBirdLibrary(hummingbirdUsername)
 
       val shows = getRecentTraktActivity(traktUsername,
-                                         traktApiKey)
+        traktApiKey)
 
       updateOverrides(shows)
 
-      determineEpisodesToSync(shows, library).foreach(show => syncTraktShowToHummingbird(show, library))
+      determineEpisodesToSync(shows, currentlyWatching).foreach(show => syncTraktShowToHummingbird(show, currentlyWatching))
+
+      val onHold = retrieveHummingBirdLibrary(hummingbirdUsername, status = ON_HOLD_STATUS)
+      determineShowsToUpdateStatus(currentlyWatching, onHold).foreach(show => {
+        if (updateShowStatus(show._1, show._2)) {
+          println(s"Changed ${show._1} to ${show._2}")
+        }
+      })
 
       println("Sync complete")
 
@@ -90,6 +100,25 @@ object Main extends App {
     }
   }
 
+
+  def determineShowsToUpdateStatus(currentlyWatching: List[HummingbirdShow], onHold: List[HummingbirdShow]) = {
+    val curWatchingToUpdate = currentlyWatching.filter(x => (new Date().getTime - x.last_watched.getTime)
+      >
+      1000 * 60 * 60 * 24 * 7 * 2)
+      .map(x => (x.anime.slug, ON_HOLD_STATUS))
+    curWatchingToUpdate
+  }
+
+  def updateShowStatus(slug: String, status: String)(implicit config:HummingbirdConfig) = {
+    val con = mkConnection(s"$HUMMINGBIRD_API/libraries/$slug",
+                           post = true,
+                           config.mashapeAuth).params("anime_id" -> slug,
+                                                      "auth_token" -> config.authToken,
+                                                      "status" -> status)
+    val response = con.asString
+
+    JsonMethods.parse(response).extractOpt[HummingbirdShow] exists (_.status == status)
+  }
 
   def determineEpisodesToSync(shows: List[Main.TraktActivity],
                               library: List[Main.HummingbirdShow],
@@ -190,9 +219,9 @@ object Main extends App {
       println(s"Failed to sync $slug to Hummingbird")
   }
 
-  def retrieveHummingBirdLibrary(username:String)(implicit config:HummingbirdConfig) = {
+  def retrieveHummingBirdLibrary(username:String, status:String = "currently-watching")(implicit config:HummingbirdConfig) = {
     val con = mkConnection(s"$HUMMINGBIRD_API/users/$username/library",
-                           mashapeAuth = config.mashapeAuth).params("status" -> "currently-watching",
+                           mashapeAuth = config.mashapeAuth).params("status" -> status,
                                                                     "auth_token" -> config.authToken)
     JsonMethods.parse(con.asString).children.map(x => x.extract[HummingbirdShow])
   }

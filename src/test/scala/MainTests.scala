@@ -15,7 +15,7 @@ class MainTests extends UnitSpec {
   }
 
   "determineEpisodesToSync" should "return an Iterable containing supplied TraktActivitys that exist within the library, require syncing and have had slugs overriden" in {
-    def hummingbirdShowFactory(episodesWatched:Int, slug:String) = HummingbirdShow(episodesWatched, HummingbirdAnime(null, slug))
+    def hummingbirdShowFactory(episodesWatched:Int, slug:String) = HummingbirdShow(episodesWatched, HummingbirdAnime(null, slug), null, null)
 
     val library = List(hummingbirdShowFactory(1, "show1"),
                        hummingbirdShowFactory(1, "show2"),
