@@ -34,6 +34,6 @@ class MainTests extends UnitSpec {
                               traktActivityFactory("show2", 0, 2, 1),
                               traktActivityFactory("show3", 3, 3, 0))
 
-    determineEpisodesToSync(shows, library, getMapping) should be (expectedResult)
+    remapEpisodes(shows, library, getMapping) should be (expectedResult)
   }
 }

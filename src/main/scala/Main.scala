@@ -74,16 +74,17 @@ object Main extends App {
   while (true) {
     try {
       val currentlyWatching = retrieveHummingBirdLibrary(hummingbirdUsername)
-
       val shows = getRecentTraktActivity(traktUsername,
-        traktApiKey)
-
+                                         traktApiKey)
       updateOverrides(shows)
+      
+      val remappedEpisodes = remapEpisodes(shows, currentlyWatching).toList
 
-      determineEpisodesToSync(shows, currentlyWatching).foreach(show => syncTraktShowToHummingbird(show, currentlyWatching))
+      remappedEpisodes.filter(x => showRequiresSync(x, currentlyWatching))
+                      .foreach(show => syncTraktShowToHummingbird(show, currentlyWatching))
 
       val onHold = retrieveHummingBirdLibrary(hummingbirdUsername, status = ON_HOLD_STATUS)
-      determineShowsToUpdateStatus(currentlyWatching, onHold).foreach(show => {
+      determineShowsToUpdateStatus(currentlyWatching, onHold, remappedEpisodes).foreach(show => {
         if (updateShowStatus(show._1, show._2)) {
           println(s"Changed ${show._1} to ${show._2}")
         }
@@ -101,12 +102,17 @@ object Main extends App {
   }
 
 
-  def determineShowsToUpdateStatus(currentlyWatching: List[HummingbirdShow], onHold: List[HummingbirdShow]) = {
+  def determineShowsToUpdateStatus(currentlyWatching: List[HummingbirdShow],
+                                   onHold: List[HummingbirdShow],
+                                   traktActivity:List[TraktActivity]) = {
+
     val curWatchingToUpdate = currentlyWatching.filter(x => (new Date().getTime - x.last_watched.getTime)
-      >
-      1000 * 60 * 60 * 24 * 7 * 2)
-      .map(x => (x.anime.slug, ON_HOLD_STATUS))
-    curWatchingToUpdate
+                                                            >
+                                                            1000 * 60 * 60 * 24 * 7 * 2)
+                                               .map(x => (x.anime.slug, ON_HOLD_STATUS))
+    val onHoldToUpdate = onHold.filter(x => traktActivity.exists(_.show.slug == x.anime.slug))
+                               .map(x => (x.anime.slug, CURRENTLY_WATCHING_STATUS))
+    curWatchingToUpdate ++ onHoldToUpdate
   }
 
   def updateShowStatus(slug: String, status: String)(implicit config:HummingbirdConfig) = {
@@ -120,17 +126,15 @@ object Main extends App {
     JsonMethods.parse(response).extractOpt[HummingbirdShow] exists (_.status == status)
   }
 
-  def determineEpisodesToSync(shows: List[Main.TraktActivity],
-                              library: List[Main.HummingbirdShow],
-                              getMapping: Int => Option[ValidMapping] = (tvdb_id: Int) => getOverride(tvdb_id)) = {
+  def remapEpisodes(shows: List[Main.TraktActivity],
+                    library: List[Main.HummingbirdShow],
+                    getMapping: Int => Option[ValidMapping] = (tvdb_id: Int) => getOverride(tvdb_id)) = {
 
-    val reMappedShows = shows.groupBy(_.show.title)
-                             .map(x => highestEpisode(x._2))
-                             .map(x => overrideShowNames(x, getMapping))
-                             .map(x => fixSeasons(x, getMapping))
-                             .map(x => fixSpecials(x, getMapping))
-                             
-    reMappedShows.filter(x => showRequiresSync(x, library))
+    shows.groupBy(_.show.title)
+         .map(x => highestEpisode(x._2))
+         .map(x => overrideShowNames(x, getMapping))
+         .map(x => fixSeasons(x, getMapping))
+         .map(x => fixSpecials(x, getMapping))
   }
 
   def updateOverrides(activities: List[TraktActivity]) {
