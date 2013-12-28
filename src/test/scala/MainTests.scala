@@ -1,6 +1,5 @@
-import org.scalatest.FlatSpec
-import org.scalatest.matchers.ShouldMatchers
-import Main._
+import api.Hummingbird.{HummingbirdShow, HummingbirdAnime}
+import nz.ubermouse.hummingbirdsyncer.Main._
 
 /**
  * Created by Taylor on 11/12/13.

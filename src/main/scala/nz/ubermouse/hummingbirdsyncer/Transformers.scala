@@ -1,4 +1,7 @@
-import Main._
+package nz.ubermouse.hummingbirdsyncer
+
+import _root_.api.Hummingbird.{ValidMapping, HummingbirdShow}
+import nz.ubermouse.hummingbirdsyncer.api.Trakt.TraktActivity
 
 /**
  * Created by Taylor on 10/12/13.

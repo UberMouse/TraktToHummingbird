@@ -1,6 +1,12 @@
+package nz.ubermouse.hummingbirdsyncer
+
+import _root_.api.Hummingbird
+import _root_.api.Hummingbird._
+import _root_.api.Hummingbird.HummingbirdConfig
+import _root_.api.Hummingbird.HummingbirdShow
+import _root_.api.Hummingbird.ValidMapping
 import java.util.Date
-import org.json4s.JsonAST.{JField, JString}
-import org.streum.configrity.converter.ValueConverter
+import org.json4s.JsonAST.JField
 import scala.collection.mutable
 import scala.math.BigInt
 import scalaj.http._
@@ -8,27 +14,16 @@ import org.json4s.native.JsonMethods
 import org.json4s.DefaultFormats
 import org.streum.configrity._
 import Transformers._
-import util.matching.Regex
+import scala.Some
+import org.json4s.JsonAST.JString
+import nz.ubermouse.hummingbirdsyncer.api.{Trakt, Sickbeard}
+import nz.ubermouse.hummingbirdsyncer.api.Trakt.TraktActivity
 
 object Main extends App {
-  val HUMMINGBIRD_API = "https://hummingbirdv1.p.mashape.com"
   val TRAKT_API = "http://api.trakt.tv"
   val MAPPING_API = "http://localhost:50341/api"
   val ON_HOLD_STATUS = "on-hold"
   val CURRENTLY_WATCHING_STATUS = "currently-watching"
-
-  case class HummingbirdConfig(authToken:String, mashapeAuth:String)
-
-  case class TraktEpisode(episode:BigInt, season:BigInt)
-  case class TraktShow(title:String, tvdb_id:Int, slug:String)
-  case class TraktActivity(show:TraktShow, episode:TraktEpisode)
-
-  case class HummingbirdAnime(title:String, slug:String)
-  case class HummingbirdShow(episodes_watched:BigInt, anime:HummingbirdAnime, last_watched:Date, status:String)
-
-  sealed abstract class HummingbirdMapping
-  case class ValidMapping(TvDBId:String, OverrideSlug:String, SeasonOverrides:Map[String, String], SpecialOverrides:Map[String, String]) extends HummingbirdMapping
-  case class EmptyMapping() extends HummingbirdMapping
 
   val defaults = Configuration("mashape-auth" -> "nZMJT9teIblQikXff081wAMuIDuFmkas",
                                "trakt-api-key" -> "fillmeout",
@@ -49,8 +44,6 @@ object Main extends App {
     }
   }
 
-  SSLCert.disableCertificateValidation()
-
   val traktUsername = config[String]("trakt-username")
   val hummingbirdUsername = config[String]("hummingbird-username")
   val hummingbirdEmail = config[String]("hummingbird-email")
@@ -59,7 +52,7 @@ object Main extends App {
   val mashapeAuth = config[String]("mashape-auth")
 
   implicit val formats = DefaultFormats
-  implicit val hummingbirdConfig = HummingbirdConfig(getHummingbirdAuthToken(hummingbirdPassword,
+  implicit val hummingbirdConfig = HummingbirdConfig(Hummingbird.getAuthToken(hummingbirdPassword,
                                                                              mashapeAuth,
                                                                              hummingbirdEmail,
                                                                              hummingbirdUsername),
@@ -73,7 +66,7 @@ object Main extends App {
 
   while (true) {
     try {
-      val currentlyWatching = retrieveHummingBirdLibrary(hummingbirdUsername)
+      val currentlyWatching = Hummingbird.retrieveLibrary(hummingbirdUsername)
       val shows = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
       updateOverrides(shows)
@@ -83,12 +76,14 @@ object Main extends App {
       remappedEpisodes.filter(x => showRequiresSync(x, currentlyWatching))
                       .foreach(show => syncTraktShowToHummingbird(show, currentlyWatching))
 
-      val onHold = retrieveHummingBirdLibrary(hummingbirdUsername, status = ON_HOLD_STATUS)
+      val onHold = Hummingbird.retrieveLibrary(hummingbirdUsername, status = ON_HOLD_STATUS)
       determineShowsToUpdateStatus(currentlyWatching, onHold, remappedEpisodes).foreach(show => {
         if (updateShowStatus(show._1, show._2)) {
           println(s"Changed ${show._1} to ${show._2}")
         }
       })
+
+      addNewOnHoldToSickbeard(onHold)
 
       println("Sync complete")
 
@@ -97,7 +92,19 @@ object Main extends App {
     catch {
       case e: Exception =>
         println(e.getMessage)
+        e.printStackTrace()
         Thread.sleep(10000)
+    }
+  }
+
+  def addNewOnHoldToSickbeard(shows: List[HummingbirdShow]) = {
+    val tvdbIds = shows.map(x => Trakt.getIdForShow(x.anime.title))
+    for{id <- tvdbIds
+        if !Sickbeard.checkIfShowIsAdded(id)} {
+      if(Sickbeard.addShowForDownload(id))
+        println(s"Added $id to Sickbeard")
+      else
+        println(s"Failed adding $id to Sickbeard")
     }
   }
 
@@ -115,19 +122,8 @@ object Main extends App {
     curWatchingToUpdate ++ onHoldToUpdate
   }
 
-  def updateShowStatus(slug: String, status: String)(implicit config:HummingbirdConfig) = {
-    val con = mkConnection(s"$HUMMINGBIRD_API/libraries/$slug",
-                           post = true,
-                           config.mashapeAuth).params("anime_id" -> slug,
-                                                      "auth_token" -> config.authToken,
-                                                      "status" -> status)
-    val response = con.asString
-
-    JsonMethods.parse(response).extractOpt[HummingbirdShow] exists (_.status == status)
-  }
-
-  def remapEpisodes(shows: List[Main.TraktActivity],
-                    library: List[Main.HummingbirdShow],
+  def remapEpisodes(shows: List[TraktActivity],
+                    library: List[HummingbirdShow],
                     getMapping: Int => Option[ValidMapping] = (tvdb_id: Int) => getOverride(tvdb_id)) = {
 
     shows.groupBy(_.show.title)
@@ -192,11 +188,10 @@ object Main extends App {
     if(!load) println(s"Upserted mapping: $mapping")
   }
 
-  def mkConnection(url:String, post:Boolean = false, mashapeAuth:String = "") = {
+  def mkConnection(url:String, post:Boolean = false) = {
     val con = (if(post) Http.post(url) else Http(url)).option(HttpOptions.connTimeout(10000))
                                                       .option(HttpOptions.readTimeout(10000))
-    if(mashapeAuth != "") con.header("X-Mashape-Authorization", mashapeAuth)
-    else con
+    con
   }
 
   def syncTraktShowToHummingbird(traktActivity:TraktActivity,
@@ -213,30 +208,10 @@ object Main extends App {
         "increment_episodes" -> "true"
     }
 
-    val con = mkConnection(s"$HUMMINGBIRD_API/libraries/$slug",
-                           post = true,
-                           config.mashapeAuth).params(updateParams, "auth_token" -> config.authToken)
-    val response = con.asString
-    if(response.contains(slug))
+    if(Hummingbird.updateShow(slug, updateParams)(config))
       println(s"Synced $slug to Hummingbird")
     else
       println(s"Failed to sync $slug to Hummingbird")
-  }
-
-  def retrieveHummingBirdLibrary(username:String, status:String = "currently-watching")(implicit config:HummingbirdConfig) = {
-    val con = mkConnection(s"$HUMMINGBIRD_API/users/$username/library",
-                           mashapeAuth = config.mashapeAuth).params("status" -> status,
-                                                                    "auth_token" -> config.authToken)
-    JsonMethods.parse(con.asString).children.map(x => x.extract[HummingbirdShow])
-  }
-
-
-  def getHummingbirdAuthToken(password:String, mashapeAuth:String, email:String = "", username:String = ""):String = {
-    mkConnection(s"$HUMMINGBIRD_API/users/authenticate",
-                 post = true,
-                 mashapeAuth).params("password" -> password,
-                                     if(email == "") "username" -> username else "email" -> email)
-                              .asString.replaceAll("\"", "")
   }
 
   def getRecentTraktActivity(username:String, apiKey: String) = {

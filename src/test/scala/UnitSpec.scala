@@ -1,4 +1,6 @@
-import Main.{ValidMapping, TraktEpisode, TraktShow, TraktActivity, unfoldRangeKeys}
+import api.Hummingbird.ValidMapping
+import nz.ubermouse.hummingbirdsyncer.api.Trakt.{TraktActivity, TraktShow, TraktEpisode}
+import nz.ubermouse.hummingbirdsyncer.Main._
 import org.scalatest.FlatSpec
 import org.scalatest.matchers.ShouldMatchers
 

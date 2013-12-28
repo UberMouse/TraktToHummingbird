@@ -1,7 +1,7 @@
-import Main._
-import org.scalatest.matchers.{ShouldMatchers, ClassicMatchers}
-import org.scalatest.FlatSpec
-import Transformers._
+import api.Hummingbird.{HummingbirdAnime, HummingbirdShow}
+import nz.ubermouse.hummingbirdsyncer.api.Trakt.{TraktShow, TraktActivity, TraktEpisode}
+import nz.ubermouse.hummingbirdsyncer.Transformers._
+
 
 /**
  * Created by Taylor on 11/12/13.
