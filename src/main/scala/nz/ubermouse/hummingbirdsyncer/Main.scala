@@ -216,8 +216,15 @@ object Main extends App {
 
   def getRecentTraktActivity(username:String, apiKey: String) = {
     val con = mkConnection(s"$TRAKT_API/activity/user.json/$apiKey/$username/episode/scrobble/${String.valueOf((System.currentTimeMillis()-10800000l)/1000l)}/${System.currentTimeMillis()/1000l}")
+
     (JsonMethods.parse(con.asString) \ "activity").transformField({
       case JField("url", JString(url)) => ("slug", JString(url.substring(url.lastIndexOf('/')+1)))
     }).children.map(x => x.extract[TraktActivity])
+  }
+
+  implicit class RichHttpRequest(req: Http.Request) {
+    def addParams(params:(String, String)*) = {
+      req.copy(params = req.params ++ params)
+    }
   }
 }

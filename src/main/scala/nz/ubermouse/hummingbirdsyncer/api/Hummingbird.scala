@@ -6,6 +6,7 @@ import scala.math.BigInt
 import scalaj.http.{HttpOptions, Http}
 import org.json4s.DefaultFormats
 import nz.ubermouse.hummingbirdsyncer.Main
+import Main.RichHttpRequest
 
 /**
  * Created by Taylor on 28/12/13.
@@ -25,7 +26,7 @@ object Hummingbird {
 
   def updateShowStatus(slug: String, status: String)(implicit config:HummingbirdConfig) = {
     val con = createApiConnection(s"$API_URL/libraries/$slug",
-                                post = true).params("anime_id" -> slug,
+                                post = true).addParams("anime_id" -> slug,
                                                     "status" -> status)
     val response = con.asString
 
@@ -48,7 +49,7 @@ object Hummingbird {
 
   def updateShow(slug:String, params:(String, String)*)(implicit config:HummingbirdConfig) = {
     val con = createApiConnection(s"$API_URL/libraries/$slug",
-                                post = true).params(params:_*)
+                                post = true).addParams(params:_*)
 
     val response = con.asString
     if(response.contains(slug))
@@ -61,7 +62,7 @@ object Hummingbird {
     val con = (if(post) Http.post(url) else Http(url)).option(HttpOptions.connTimeout(10000))
                                                       .option(HttpOptions.readTimeout(10000))
                                                       .header("X-Mashape-Authorization", config.mashapeAuth)
-                                                      .param("auth_token", config.authToken)
+                                                      .params("auth_token" -> config.authToken)
     con
   }
 
