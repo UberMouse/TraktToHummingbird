@@ -115,7 +115,8 @@ object Main extends App {
 
     val curWatchingToUpdate = currentlyWatching.filter(x => (new Date().getTime - x.last_watched.getTime)
                                                             >
-                                                            1000 * 60 * 60 * 24 * 7 * 2)
+                                                            1000 * 60 * 60 * 24 * 7 * 2
+                                                            && x.episodes_watched > 0)
                                                .map(x => (x.anime.slug, ON_HOLD_STATUS))
     val onHoldToUpdate = onHold.filter(x => traktActivity.exists(_.show.slug == x.anime.slug))
                                .map(x => (x.anime.slug, CURRENTLY_WATCHING_STATUS))
