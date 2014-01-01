@@ -24,6 +24,8 @@ object Main extends App {
   val MAPPING_API = "http://localhost:50341/api"
   val ON_HOLD_STATUS = "on-hold"
   val CURRENTLY_WATCHING_STATUS = "currently-watching"
+  val LONG_SLEEP = 300000
+  val SHORT_SLEEP = 10000
 
   val defaults = Configuration("mashape-auth" -> "nZMJT9teIblQikXff081wAMuIDuFmkas",
                                "trakt-api-key" -> "fillmeout",
@@ -77,7 +79,8 @@ object Main extends App {
                       .foreach(show => syncTraktShowToHummingbird(show, currentlyWatching))
 
       val onHold = Hummingbird.retrieveLibrary(hummingbirdUsername, status = ON_HOLD_STATUS)
-      determineShowsToUpdateStatus(currentlyWatching, onHold, remappedEpisodes).foreach(show => {
+      val statusUpdateNeeded = determineShowsToUpdateStatus(currentlyWatching, onHold, remappedEpisodes)
+      statusUpdateNeeded.foreach(show => {
         if (updateShowStatus(show._1, show._2)) {
           println(s"Changed ${show._1} to ${show._2}")
         }
@@ -87,13 +90,16 @@ object Main extends App {
 
       println("Sync complete")
 
-      Thread.sleep(300000)
+      if(statusUpdateNeeded.length == 0)
+        Thread.sleep(LONG_SLEEP)
+      else
+        Thread.sleep(SHORT_SLEEP/10)
     }
     catch {
       case e: Exception =>
         println(e.getMessage)
         e.printStackTrace()
-        Thread.sleep(10000)
+        Thread.sleep(SHORT_SLEEP)
     }
   }
 
