@@ -8,7 +8,6 @@ import _root_.api.Hummingbird.ValidMapping
 import java.util.Date
 import org.json4s.JsonAST.JField
 import scala.collection.mutable
-import scala.math.BigInt
 import scalaj.http._
 import org.json4s.native.JsonMethods
 import org.json4s.DefaultFormats
@@ -18,8 +17,9 @@ import scala.Some
 import org.json4s.JsonAST.JString
 import nz.ubermouse.hummingbirdsyncer.api.{Trakt, Sickbeard}
 import nz.ubermouse.hummingbirdsyncer.api.Trakt.TraktActivity
+import com.typesafe.scalalogging.slf4j.Logging
 
-object Main extends App {
+object Main extends App with Logging {
   val TRAKT_API = "http://api.trakt.tv"
   val MAPPING_API = "http://localhost:50341/api"
   val ON_HOLD_STATUS = "on-hold"
@@ -74,21 +74,23 @@ object Main extends App {
       updateOverrides(shows)
       
       val remappedEpisodes = remapEpisodes(shows, currentlyWatching).toList
+      val needSync = remappedEpisodes.filter(x => showRequiresSync(x, currentlyWatching))
 
-      remappedEpisodes.filter(x => showRequiresSync(x, currentlyWatching))
-                      .foreach(show => syncTraktShowToHummingbird(show, currentlyWatching))
+      needSync.foreach(show => syncTraktShowToHummingbird(show, currentlyWatching))
 
       val onHold = Hummingbird.retrieveLibrary(hummingbirdUsername, status = ON_HOLD_STATUS)
       val statusUpdateNeeded = determineShowsToUpdateStatus(currentlyWatching, onHold, remappedEpisodes)
       statusUpdateNeeded.foreach(show => {
         if (updateShowStatus(show._1, show._2)) {
-          println(s"Changed ${show._1} to ${show._2}")
+          log(s"Changed ${show._1} to ${show._2}")
         }
       })
 
       addNewOnHoldToSickbeard(onHold)
 
-      println("Sync complete")
+      println(s"Sync complete. Synced ${needSync.length} shows")
+
+      if(!needSync.isEmpty) logger.debug(s"Sync complete. Synced ${needSync.map(x => x.show.title).mkString("\n")}")
 
       if(statusUpdateNeeded.length == 0)
         Thread.sleep(LONG_SLEEP)
@@ -97,8 +99,7 @@ object Main extends App {
     }
     catch {
       case e: Exception =>
-        println(e.getMessage)
-        e.printStackTrace()
+        log(e.getMessage)
         Thread.sleep(SHORT_SLEEP)
     }
   }
@@ -106,11 +107,11 @@ object Main extends App {
   def addNewOnHoldToSickbeard(shows: List[HummingbirdShow]) = {
     val tvdbIds = shows.map(x => Trakt.getIdForShow(x.anime.title))
     for{id <- tvdbIds
-        if !Sickbeard.checkIfShowIsAdded(id)} {
+        if !Sickbeard.checkIfShowIsAdded(id) && id != -1} {
       if(Sickbeard.addShowForDownload(id))
-        println(s"Added $id to Sickbeard")
+        log(s"Added $id to Sickbeard")
       else
-        println(s"Failed adding $id to Sickbeard")
+        log(s"Failed adding $id to Sickbeard")
     }
   }
 
@@ -192,7 +193,7 @@ object Main extends App {
     val unFolded = unfoldRangeKeys(mapping.SpecialOverrides)
 
     overrides(mapping.TvDBId) = mapping.copy(SpecialOverrides = unFolded)
-    if(!load) println(s"Upserted mapping: $mapping")
+    if(!load) log(s"Upserted mapping: $mapping")
   }
 
   def mkConnection(url:String, post:Boolean = false) = {
@@ -216,9 +217,9 @@ object Main extends App {
     }
 
     if(Hummingbird.updateShow(slug, updateParams)(config))
-      println(s"Synced $slug to Hummingbird")
+      logger.debug(s"Synced $slug to Hummingbird")
     else
-      println(s"Failed to sync $slug to Hummingbird")
+      log(s"Failed to sync $slug to Hummingbird")
   }
 
   def getRecentTraktActivity(username:String, apiKey: String) = {
@@ -227,6 +228,11 @@ object Main extends App {
     (JsonMethods.parse(con.asString) \ "activity").transformField({
       case JField("url", JString(url)) => ("slug", JString(url.substring(url.lastIndexOf('/')+1)))
     }).children.map(x => x.extract[TraktActivity])
+  }
+
+  def log(msg:String) {
+    println(msg)
+    logger.debug(msg)
   }
 
   implicit class RichHttpRequest(req: Http.Request) {

@@ -1,21 +1,11 @@
 Manifest-Version: 1.0
-Class-Path: configrity-core_2.10-1.0.0.jar mockito-all-1.9.0.jar commo
- ns-io-2.0.1.jar api-0.12.4.jar run-0.12.4.jar commons-httpclient-3.1.
- jar main-0.12.4.jar process-0.12.4.jar logging-0.12.4.jar tracking-0.
- 12.4.jar command-0.12.4.jar compiler-integration-0.12.4.jar actions-0
- .12.4.jar commons-logging-1.0.4.jar jline-1.0.jar commons-codec-1.2.j
- ar interface-0.12.4.jar sbt-idea-1.5.1.jar classpath-0.12.4.jar contr
- ol-0.12.4.jar jansi.jar scala-compiler.jar tasks-0.12.4.jar jsch-0.1.
- 46.jar persist-0.12.4.jar collections-0.12.4.jar test-agent-0.12.4.ja
- r classfile-0.12.4.jar compile-0.12.4.jar testing-0.12.4.jar incremen
- tal-compiler-0.12.4.jar compiler-ivy-integration-0.12.4.jar test-inte
- rface-0.5.jar scala-library.jar completion-0.12.4.jar ivy-2.3.0-rc1.j
- ar launcher-interface-0.12.4.jar io-0.12.4.jar ivy-0.12.4.jar jline.j
- ar sbinary_2.9.0-0.4.0.jar task-system-0.12.4.jar cache-0.12.4.jar sb
- t-0.12.4.jar json4s-ast_2.10-3.2.5.jar scalatest_2.10-1.9.1.jar json4
- s-core_2.10-3.2.5.jar scala-compiler.jar scala-actors-2.10.0.jar para
- namer-2.5.6.jar scalap-2.10.0.jar scalaj-http_2.10-0.3.10.jar scala-r
- eflect-2.10.0.jar scala-library.jar json4s-native_2.10-3.2.5.jar scal
- a-library.jar scala-compiler.jar
+Class-Path: json4s-core_2.10-3.2.5.jar scalatest_2.10-1.9.1.jar json4s
+ -native_2.10-3.2.5.jar scalacheck_2.10-1.10.1.jar scala-library-2.10.
+ 2.jar scala-library.jar configrity-core_2.10-1.0.0.jar test-interface
+ -0.5.jar logback-core-1.0.3.jar scala-reflect-2.10.0.jar paranamer-2.
+ 5.6.jar scalalogging-slf4j_2.10-1.0.1.jar log4j-over-slf4j-1.7.1.jar 
+ slf4j-api-1.7.2.jar mockito-all-1.9.0.jar scalap-2.10.0.jar scala-act
+ ors-2.10.1.jar json4s-ast_2.10-3.2.5.jar scala-compiler-2.10.0.jar lo
+ gback-classic-1.0.3.jar scalaj-http_2.10-0.3.10.jar
 Main-Class: nz.ubermouse.hummingbirdsyncer.Main
 
