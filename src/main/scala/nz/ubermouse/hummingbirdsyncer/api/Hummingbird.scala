@@ -4,16 +4,14 @@ import java.util.Date
 import org.json4s.native.JsonMethods
 import scala.math.BigInt
 import scalaj.http.{HttpOptions, Http}
-import org.json4s.DefaultFormats
-import nz.ubermouse.hummingbirdsyncer.Main
+import nz.ubermouse.hummingbirdsyncer.{DefaultFormats, Main}
 import Main.RichHttpRequest
+import org.json4s.JsonAST.{JField, JString}
 
 /**
  * Created by Taylor on 28/12/13.
  */
-object Hummingbird {
-  implicit val formats = DefaultFormats
-
+object Hummingbird extends DefaultFormats {
   val API_URL = "https://hummingbirdv1.p.mashape.com"
   case class HummingbirdConfig(authToken:String, mashapeAuth:String)
 
@@ -28,16 +26,16 @@ object Hummingbird {
     val con = createApiConnection(s"$API_URL/libraries/$slug",
                                 post = true).addParams("anime_id" -> slug,
                                                     "status" -> status)
-    val response = con.asString
 
-    JsonMethods.parse(response).extractOpt[HummingbirdShow] exists (_.status == status)
+    parseLibraryJson(con.asString).extractOpt[HummingbirdShow] exists (_.status == status)
   }
 
   def retrieveLibrary(username:String, status:String = "currently-watching")(implicit config:HummingbirdConfig) = {
     val con = createApiConnection(s"$API_URL/users/$username/library").params("status" -> status)
-    JsonMethods.parse(con.asString).children.map(x => x.extract[HummingbirdShow])
+    parseLibraryJson(con.asString).children.map(x => x.extract[HummingbirdShow])
   }
 
+  def parseLibraryJson(json:String) = JsonMethods.parse(json)
 
   def getAuthToken(password:String, mashapeAuth:String, email:String = "", username:String = ""):String = {
     Main.mkConnection(s"$API_URL/users/authenticate",

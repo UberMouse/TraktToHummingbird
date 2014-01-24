@@ -1,19 +1,16 @@
 package nz.ubermouse.hummingbirdsyncer.api
 
-import nz.ubermouse.hummingbirdsyncer.Main
+import nz.ubermouse.hummingbirdsyncer.{DefaultFormats, Main}
 import org.json4s.native.JsonMethods
 import scala.math.BigInt
 import scala.BigInt
-import org.json4s._
 import java.net.URLEncoder
 import com.typesafe.scalalogging.slf4j.Logging
 
 /**
  * Created by Taylor on 28/12/13.
  */
-object Trakt extends Logging {
-  implicit val formats = DefaultFormats
-
+object Trakt extends Logging with DefaultFormats {
   case class TraktEpisode(episode:BigInt, season:BigInt)
   case class TraktShow(title:String, tvdb_id:Int, slug:String)
   case class TraktActivity(show:TraktShow, episode:TraktEpisode)

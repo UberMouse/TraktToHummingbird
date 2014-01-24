@@ -9,8 +9,8 @@ import java.util.Date
 import org.json4s.JsonAST.JField
 import scala.collection.mutable
 import scalaj.http._
-import org.json4s.native.JsonMethods
-import org.json4s.DefaultFormats
+import org.json4s.native.{Serialization, JsonMethods}
+import org.json4s.{NoTypeHints, Formats, DefaultFormats}
 import org.streum.configrity._
 import Transformers._
 import scala.Some
@@ -53,7 +53,6 @@ object Main extends App with Logging {
   val traktApiKey = config[String]("trakt-api-key")
   val mashapeAuth = config[String]("mashape-auth")
 
-  implicit val formats = DefaultFormats
   implicit val hummingbirdConfig = HummingbirdConfig(Hummingbird.getAuthToken(hummingbirdPassword,
                                                                              mashapeAuth,
                                                                              hummingbirdEmail,
@@ -99,7 +98,8 @@ object Main extends App with Logging {
     }
     catch {
       case e: Exception =>
-        log(e.getMessage)
+        logger.debug(e.getMessage)
+        e.printStackTrace()
         Thread.sleep(SHORT_SLEEP)
     }
   }
@@ -142,12 +142,13 @@ object Main extends App with Logging {
   }
 
   def updateOverrides(activities: List[TraktActivity]) {
-    val needUpdate = activities.map(x => {
+    val map = activities.map(x => {
       getOverride(x.show.tvdb_id) match {
         case Some(_) => -1
         case None => x.show.tvdb_id
       }
-    }).filter(_ > -1)
+    })
+    val needUpdate = map.filter(_ > -1)
 
     if(needUpdate.length == 0) return
 
@@ -193,7 +194,7 @@ object Main extends App with Logging {
     val unFolded = unfoldRangeKeys(mapping.SpecialOverrides)
 
     overrides(mapping.TvDBId) = mapping.copy(SpecialOverrides = unFolded)
-    if(!load) log(s"Upserted mapping: $mapping")
+    if(!load) logger.debug(s"Upserted mapping: $mapping")
   }
 
   def mkConnection(url:String, post:Boolean = false) = {

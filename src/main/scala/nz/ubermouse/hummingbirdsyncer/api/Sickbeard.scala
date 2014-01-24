@@ -1,16 +1,13 @@
 package nz.ubermouse.hummingbirdsyncer.api
 
-import nz.ubermouse.hummingbirdsyncer.Main
+import nz.ubermouse.hummingbirdsyncer.{DefaultFormats, Main}
 import org.json4s.native.JsonMethods
 import org.json4s.JsonAST.{JString, JField}
-import org.json4s.DefaultFormats
 
 /**
  * Created by Taylor on 28/12/13.
  */
-object Sickbeard {
-  implicit val formats = DefaultFormats
-
+object Sickbeard extends DefaultFormats {
   val API_URL = "http://localhost:8081/api/123e959c1db648e25ff0660496993e9f"
   case class Result(message:String, result:String)
 
