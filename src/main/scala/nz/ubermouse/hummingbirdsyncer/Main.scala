@@ -9,8 +9,7 @@ import java.util.Date
 import org.json4s.JsonAST.JField
 import scala.collection.mutable
 import scalaj.http._
-import org.json4s.native.{Serialization, JsonMethods}
-import org.json4s.{NoTypeHints, Formats, DefaultFormats}
+import org.json4s.native.JsonMethods
 import org.streum.configrity._
 import Transformers._
 import scala.Some
@@ -68,11 +67,11 @@ object Main extends App with Logging {
   while (true) {
     try {
       val currentlyWatching = Hummingbird.retrieveLibrary(hummingbirdUsername)
-      val shows = getRecentTraktActivity(traktUsername,
+      val recentScrobbles = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
-      updateOverrides(shows)
+      updateOverrides(recentScrobbles)
       
-      val remappedEpisodes = remapEpisodes(shows, currentlyWatching).toList
+      val remappedEpisodes = remapEpisodes(recentScrobbles, currentlyWatching).toList
       val needSync = remappedEpisodes.filter(x => showRequiresSync(x, currentlyWatching))
 
       needSync.foreach(show => syncTraktShowToHummingbird(show, currentlyWatching))
@@ -105,9 +104,8 @@ object Main extends App with Logging {
   }
 
   def addNewOnHoldToSickbeard(shows: List[HummingbirdShow]) = {
-    val tvdbIds = shows.map(x => Trakt.getIdForShow(x.anime.title))
-    for{id <- tvdbIds
-        if !Sickbeard.checkIfShowIsAdded(id) && id != -1} {
+    val tvdbIds = shows.map(x => Trakt.getIdForShow(x.anime.title)).filter(x => x != -1 && !Sickbeard.checkIfShowIsAdded(x))
+    for(id <- tvdbIds) {
       if(Sickbeard.addShowForDownload(id))
         log(s"Added $id to Sickbeard")
       else
@@ -142,13 +140,13 @@ object Main extends App with Logging {
   }
 
   def updateOverrides(activities: List[TraktActivity]) {
-    val map = activities.map(x => {
+    val tvdbIds = activities.map(x => {
       getOverride(x.show.tvdb_id) match {
         case Some(_) => -1
         case None => x.show.tvdb_id
       }
     })
-    val needUpdate = map.filter(_ > -1)
+    val needUpdate = tvdbIds.filter(_ > -1)
 
     if(needUpdate.length == 0) return
 
@@ -224,7 +222,9 @@ object Main extends App with Logging {
   }
 
   def getRecentTraktActivity(username:String, apiKey: String) = {
-    val con = mkConnection(s"$TRAKT_API/activity/user.json/$apiKey/$username/episode/scrobble/${String.valueOf((System.currentTimeMillis()-10800000l)/1000l)}/${System.currentTimeMillis()/1000l}")
+    val aWeekAgo = (System.currentTimeMillis()-604800000L) / 1000L
+    val now = System.currentTimeMillis() / 1000L
+    val con = mkConnection(s"$TRAKT_API/activity/user.json/$apiKey/$username/episode/scrobble/$aWeekAgo/$now")
 
     (JsonMethods.parse(con.asString) \ "activity").transformField({
       case JField("url", JString(url)) => ("slug", JString(url.substring(url.lastIndexOf('/')+1)))
