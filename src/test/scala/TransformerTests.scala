@@ -11,9 +11,10 @@ class TransformerTests extends UnitSpec {
     def traktActivityFactory(episodeNum:Int) = TraktActivity(null, TraktEpisode(episodeNum, 0))
 
     val testData = List(traktActivityFactory(1),
+                        traktActivityFactory(3),
                         traktActivityFactory(2))
 
-    highestEpisode(testData) should be (traktActivityFactory(2))
+    highestEpisode(testData) should be (traktActivityFactory(3))
   }
 
   "showRequiresSync" should "return true if library contains HummingbirdShow with slug matching TraktActivity.episode and HummingbirdShow.episodes_watched < TraktActivity.episode.episode" in {

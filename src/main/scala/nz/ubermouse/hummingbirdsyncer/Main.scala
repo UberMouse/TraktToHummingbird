@@ -150,7 +150,7 @@ object Main extends App with Logging {
 
     if(needUpdate.length == 0) return
 
-    val json = mkConnection(s"$MAPPING_API/mapping/bulk/${needUpdate.mkString(",")}").asString
+    val json = mkConnection(s"$MAPPING_API/mapping/bulk/${needUpdate.distinct.mkString(",")}").asString
     val parsedMappings = JsonMethods.parse(json).children.map(x => x.extract[ValidMapping])
 
     for(mapping <- parsedMappings)
