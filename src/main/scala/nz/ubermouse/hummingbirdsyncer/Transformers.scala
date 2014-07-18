@@ -7,7 +7,14 @@ import nz.ubermouse.hummingbirdsyncer.api.Trakt.TraktActivity
  * Created by Taylor on 10/12/13.
  */
 object Transformers {
-  val highestEpisode = (x:List[TraktActivity]) => x.sortWith((x, y) => x.episode.episode > y.episode.episode).head
+  val highestEpisode = (x:List[TraktActivity]) => {
+    val highestPerSeason = {
+      x.groupBy(_.episode.season)
+       .map{case(_, activities:List[TraktActivity]) => activities.sortWith((x, y) => x.episode.episode > y.episode.episode).head}
+       .toList
+    }
+    highestPerSeason.sortWith((x, y) => x.episode.season > y.episode.season).head
+  }
 
   val showRequiresSync = (x:TraktActivity, library:List[HummingbirdShow]) => {
     library.exists(y => y.anime.slug.toLowerCase == x.show.slug.toLowerCase
