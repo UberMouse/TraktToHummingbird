@@ -17,6 +17,8 @@ import org.json4s.JsonAST.JString
 import nz.ubermouse.hummingbirdsyncer.api.{Trakt, Sickbeard}
 import nz.ubermouse.hummingbirdsyncer.api.Trakt.TraktActivity
 import com.typesafe.scalalogging.slf4j.Logging
+import nz.ubermouse.hummingbirdsyncer.printers.{ValidMappingPrinter, TraktActivityPrinter, HummingbirdShowPrinter}
+import Tap._
 
 object Main extends App with Logging {
   val TRAKT_API = "http://api.trakt.tv"
@@ -67,12 +69,26 @@ object Main extends App with Logging {
   while (true) {
     try {
       val currentlyWatching = Hummingbird.retrieveLibrary(hummingbirdUsername)
+      logger.trace("=== Hummingbird Currently Watching ===")
+      HummingbirdShowPrinter(currentlyWatching)
+      logger.trace("============= End ==============")
       val recentScrobbles = getRecentTraktActivity(traktUsername,
                                          traktApiKey)
+      // Noisy and generally not useful information
+      // logger.trace("=== Trakt Currently Watching ===")
+      // TraktActivityPrinter(recentScrobbles)
+      // logger.trace("============= End ==============")
+
       updateOverrides(recentScrobbles)
-      
+
       val remappedEpisodes = remapEpisodes(recentScrobbles, currentlyWatching).toList
+      logger.trace("=== Remapped Episodes ===")
+      TraktActivityPrinter(remappedEpisodes)
+      logger.trace("========== End ===========")
       val needSync = remappedEpisodes.filter(x => showRequiresSync(x, currentlyWatching))
+      logger.trace("=== Episodes that need to be updated ===")
+      TraktActivityPrinter(needSync)
+      logger.trace("================= End ==================")
 
       needSync.foreach(show => syncTraktShowToHummingbird(show, currentlyWatching))
 
@@ -134,9 +150,30 @@ object Main extends App with Logging {
 
     shows.groupBy(_.show.title)
          .map(x => highestEpisode(x._2))
-         .map(x => overrideShowNames(x, getMapping))
-         .map(x => fixSeasons(x, getMapping))
-         .map(x => fixSpecials(x, getMapping))
+         .tap(s => {
+            logger.trace("=== Highest Trakt Episodes ===")
+            TraktActivityPrinter(s.toList)
+            logger.trace("============= End =============")
+            s
+         })
+         .map(x => overrideShowNames(x, getMapping)).tap(s => {
+           logger.trace("=== Overridden Show Names ===")
+           TraktActivityPrinter(s.toList)
+           logger.trace("============= End =============")
+           s
+         })
+         .map(x => fixSeasons(x, getMapping)).tap(s => {
+            logger.trace("=== Seasons Fixed ===")
+            TraktActivityPrinter(s.toList)
+            logger.trace("============= End =============")
+            s
+          })
+         .map(x => fixSpecials(x, getMapping)).tap(s => {
+          logger.trace("=== Specials Fixed ===")
+          TraktActivityPrinter(s.toList)
+          logger.trace("============= End =============")
+          s
+        })
   }
 
   def updateOverrides(activities: List[TraktActivity]) {
@@ -147,14 +184,27 @@ object Main extends App with Logging {
       }
     })
     val needUpdate = tvdbIds.filter(_ > -1)
+    for{
+      activity <- activities
+      if needUpdate.contains(activity.show.tvdb_id)
+    } {
+      logger.trace("Found new show")
+      TraktActivityPrinter(activity)
+    }
 
     if(needUpdate.length == 0) return
 
     val json = mkConnection(s"$MAPPING_API/mapping/bulk/${needUpdate.distinct.mkString(",")}").asString
     val parsedMappings = JsonMethods.parse(json).children.map(x => x.extract[ValidMapping])
 
-    for(mapping <- parsedMappings)
+    if(parsedMappings.nonEmpty)
+      logger.debug("=== New Mappings ===")
+    for(mapping <- parsedMappings)  {
+      ValidMappingPrinter(mapping)
       upsertMapping(mapping)
+    }
+    if(parsedMappings.nonEmpty)
+      logger.debug("======== End =======")
 
     for(id <- needUpdate) {
       getOverride(id) match {
@@ -234,6 +284,11 @@ object Main extends App with Logging {
   def log(msg:String) {
     println(msg)
     logger.debug(msg)
+  }
+
+  def trace[A](item:A) {
+    println(item)
+    logger.trace(item.toString)
   }
 
   implicit class RichHttpRequest(req: Http.Request) {
