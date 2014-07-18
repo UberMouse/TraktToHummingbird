@@ -2,19 +2,29 @@ import api.Hummingbird.{HummingbirdAnime, HummingbirdShow}
 import nz.ubermouse.hummingbirdsyncer.api.Trakt.{TraktShow, TraktActivity, TraktEpisode}
 import nz.ubermouse.hummingbirdsyncer.Transformers._
 
-
 /**
  * Created by Taylor on 11/12/13.
  */
 class TransformerTests extends UnitSpec {
-  "highestEpisode" should "return Highest Episode in passed List[TraktActivity]" in {
-    def traktActivityFactory(episodeNum:Int) = TraktActivity(null, TraktEpisode(episodeNum, 0))
 
-    val testData = List(traktActivityFactory(1),
-                        traktActivityFactory(3),
-                        traktActivityFactory(2))
+  {
+    def traktActivityFactory(episode:Int, season:Int = 0) = TraktActivity(null, TraktEpisode(episode, season))
 
-    highestEpisode(testData) should be (traktActivityFactory(3))
+    "highestEpisode" should "return Highest Episode in passed List[TraktActivity]" in {
+      val highest = traktActivityFactory(3)
+      val testData = List(traktActivityFactory(1),
+                          highest,
+                          traktActivityFactory(2))
+
+      highestEpisode(testData) should be (highest)
+    }
+
+    "highestEpisode" should "only consider largest season" in {
+      val highest = traktActivityFactory(3, 2)
+      val testData = List(traktActivityFactory(5), traktActivityFactory(1, 2), highest)
+
+      highestEpisode(testData) should be (highest)
+    }
   }
 
   "showRequiresSync" should "return true if library contains HummingbirdShow with slug matching TraktActivity.episode and HummingbirdShow.episodes_watched < TraktActivity.episode.episode" in {
