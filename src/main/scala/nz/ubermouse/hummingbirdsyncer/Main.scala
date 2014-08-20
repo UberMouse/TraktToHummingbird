@@ -162,6 +162,12 @@ object Main extends App with Logging {
            logger.trace("============= End =============")
            s
          })
+         .map(x => fixEpisodes(x, getMapping)).tap(s => {
+           logger.trace("=== Shows with episodes fixed ===")
+           TraktActivityPrinter(s.toList)
+           logger.trace("============= End =============")
+           s
+         })
          .map(x => fixSeasons(x, getMapping)).tap(s => {
             logger.trace("=== Seasons Fixed ===")
             TraktActivityPrinter(s.toList)

@@ -37,12 +37,20 @@ object Transformers {
 
   val fixSpecials = (x:TraktActivity, getMapping: Int => Option[ValidMapping]) => {
     x.episode.season.toInt match {
-      case 0 =>
-        fixGeneric(x,
-                  (m:ValidMapping) => m.SpecialOverrides,
-                  (t:TraktActivity) => t.episode.episode.toString(),
-                  getMapping)
+      case 0 => fixGeneric(x,
+                          (m:ValidMapping) => m.SpecialOverrides,
+                          (t:TraktActivity) => t.episode.episode.toString(),
+                          getMapping)
       case _ => x
     }
+  }
+
+  val fixEpisodes = (x: TraktActivity, getMapping: Int => Option[ValidMapping]) => {
+    getMapping(x.show.tvdb_id).map(mapping => mapping.SeasonOverrides)
+                              .filter(mapping => mapping.contains(x.episode.season.toString()))
+                              .filter(mapping => mapping(x.episode.season.toString()).matches("\\+[0-9]+"))
+                              .map(mapping => mapping(x.episode.season.toString()).drop(1).toInt)
+                              .map(epInc => x.copy(episode = x.episode.copy(episode = x.episode.episode + epInc, season = 1)))
+                              .getOrElse(x)
   }
 }

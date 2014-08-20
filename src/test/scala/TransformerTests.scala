@@ -49,6 +49,21 @@ class TransformerTests extends UnitSpec {
     fixSeasons(traktActivityFactory("show1", 2, 0, 0), getMapping).show.slug should be ("show1")
   }
 
+  "fixEpisodes" should "set season to 1 and modify episode count when it encounters a '+#' season override" in {
+    val fixed = fixEpisodes(traktActivityFactory("show3", 20, 1, 2), getMapping)
+
+    fixed.show.slug should be ("show3")
+    fixed.episode.season should be (1)
+    fixed.episode.episode should be (59)
+  }
+
+  "fixEpisodes" should "not perform any modifications when presented with a normal season override" in {
+    val fixed = fixEpisodes(traktActivityFactory("show1", 2, 0, 1), getMapping)
+
+    fixed.show.slug should be ("show1")
+    fixed.episode.episode should be(0)
+  }
+
   "fixSpecials" should "override TraktActivity slug with new slug if TraktActivity.show.season is 0 and special override exists for TraktActivity.show.episode or leave intact if none exist" in {
     fixSpecials(traktActivityFactory("show1", 3, 1, 0), getMapping).show.slug should be("show3")
     fixSpecials(traktActivityFactory("show1", 3, 2, 0), getMapping).show.slug should be("show4")
